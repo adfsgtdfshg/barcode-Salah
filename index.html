@@ -575,3 +575,85 @@ function onScanSuccess(decodedText) {
         focusBarcodeInput();
     }, 3000);
 }
+<!-- ZXing library CDN -->
+<script type="module">
+  import { BrowserMultiFormatReader } from 'https://cdn.jsdelivr.net/npm/@zxing/browser@0.2.7/esm/index.min.js';
+  let codeReader;
+  let selectedDeviceId;
+  let scanning = false;
+  let torchOn = false;
+  const scannerContainer = document.getElementById('scanner-container');
+  const qrReader = document.getElementById('qr-reader');
+  const scanBtn = document.getElementById('startScannerBtn');
+  const torchBtn = document.createElement('button');
+  torchBtn.innerHTML = '<i class="fa fa-bolt"></i>';
+  torchBtn.className = 'btn btn-warning';
+  torchBtn.style.margin = '10px';
+  torchBtn.style.display = 'none';
+  scannerContainer.appendChild(torchBtn);
+  function showGuideBox() {
+    let guide = document.getElementById('guide-box');
+    if (!guide) {
+      guide = document.createElement('div');
+      guide.id = 'guide-box';
+      guide.style.position = 'absolute';
+      guide.style.border = '3px dashed #00c853';
+      guide.style.width = '70%';
+      guide.style.height = '60%';
+      guide.style.top = '20%';
+      guide.style.left = '15%';
+      guide.style.pointerEvents = 'none';
+      scannerContainer.appendChild(guide);
+    }
+  }
+  function hideGuideBox() {
+    const guide = document.getElementById('guide-box');
+    if (guide) guide.remove();
+  }
+  async function startZXingScanner() {
+    if (scanning) return;
+    scanning = true;
+    qrReader.innerHTML = '';
+    showGuideBox();
+    codeReader = new BrowserMultiFormatReader();
+    const devices = await BrowserMultiFormatReader.listVideoInputDevices();
+    // Prefer back camera
+    selectedDeviceId = devices.find(d => d.label.toLowerCase().includes('back'))?.deviceId || devices[0]?.deviceId;
+    if (!selectedDeviceId) {
+      Swal.fire('No camera found', '', 'error');
+      scanning = false;
+      return;
+    }
+    try {
+      await codeReader.decodeFromVideoDevice(selectedDeviceId, qrReader, (result, err, controls) => {
+        if (result) {
+          scanning = false;
+          hideGuideBox();
+          controls.stop();
+          Swal.fire({title:'Barcode found!',text:result.getText(),icon:'success',timer:2000,showConfirmButton:false});
+          document.getElementById('manualBarcode').value = result.getText();
+          document.getElementById('manualBarcode').dispatchEvent(new Event('input'));
+          setTimeout(()=>{startZXingScanner();}, 2500);
+        } else if (err && !(err instanceof ZXing.NotFoundException)) {
+          Swal.fire('Scan error', err.message, 'error');
+        }
+      }, {
+        video: { facingMode: { exact: 'environment' } },
+        torch: torchOn
+      });
+      // Torch control
+      torchBtn.style.display = 'inline-block';
+      torchBtn.onclick = async () => {
+        torchOn = !torchOn;
+        await codeReader.reset();
+        scanning = false;
+        startZXingScanner();
+      };
+    } catch (e) {
+      Swal.fire('Camera error', e.message, 'error');
+      scanning = false;
+      hideGuideBox();
+    }
+  }
+  scanBtn.onclick = startZXingScanner;
+</script>
