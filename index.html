@@ -223,7 +223,7 @@
                 <div class="card shadow-sm">
                     <div class="card-body">
                         <h5 class="card-title text-center mb-3">إدخال الباركود يدوياً</h5>
-                        <input type="text" id="manualBarcode" class="form-control barcode-input" placeholder="أدخل رقم الباركود هنا...">
+                        <input type="text" id="manualBarcode" class="form-control barcode-input" placeholder="أدخل رقم الباركود هنا..." autocomplete="off" autofocus>
                         <div class="text-center mt-3">
                             <button id="searchBtn" class="btn btn-warning btn-lg">
                                 <i class="fas fa-search"></i> البحث
@@ -514,3 +514,64 @@
     </script>
 </body>
 </html>
+
+
+// Autofocus barcode input on page load and after each scan
+function focusBarcodeInput() {
+    const input = document.getElementById('manualBarcode');
+    if (input) {
+        input.focus();
+        input.select();
+    }
+}
+window.addEventListener('DOMContentLoaded', focusBarcodeInput);
+
+// Clean and validate barcode input
+function cleanBarcodeInput(value) {
+    // Remove spaces and unwanted characters (keep digits and letters only)
+    return value.replace(/[^\w\d]/g, '').trim();
+}
+
+// Enhanced search button click
+const barcodeInput = document.getElementById('manualBarcode');
+document.getElementById('searchBtn').addEventListener('click', function() {
+    let barcode = barcodeInput.value;
+    barcode = cleanBarcodeInput(barcode);
+    barcodeInput.value = barcode;
+    if (barcode.length < 5) {
+        Swal.fire({
+            icon: 'warning',
+            title: 'تنبيه',
+            text: 'يرجى إدخال رقم باركود صالح (5 خانات أو أكثر)'
+        });
+        focusBarcodeInput();
+        return;
+    }
+    searchProduct(barcode);
+    focusBarcodeInput();
+});
+
+// Search on Enter key
+barcodeInput.addEventListener('keypress', function(e) {
+    if (e.key === 'Enter') {
+        document.getElementById('searchBtn').click();
+    }
+});
+
+// Instant validation on input
+barcodeInput.addEventListener('input', function() {
+    let cleaned = cleanBarcodeInput(barcodeInput.value);
+    if (barcodeInput.value !== cleaned) {
+        barcodeInput.value = cleaned;
+    }
+});
+
+// After successful scan, focus input
+function onScanSuccess(decodedText) {
+    scanner.pause();
+    searchProduct(decodedText);
+    setTimeout(() => {
+        scanner.resume();
+        focusBarcodeInput();
+    }, 3000);
+}
