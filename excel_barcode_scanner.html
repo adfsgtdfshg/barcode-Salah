@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>قارئ باركود من Excel</title>
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;700&display=swap" rel="stylesheet">
+  <script src="https://unpkg.com/html5-qrcode@2.0.9/dist/html5-qrcode.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.3.0/exceljs.min.js"></script>
+  <style>
+    body {
+      font-family: 'Cairo', sans-serif;
+      margin: 0;
+      padding: 20px;
+      background-color: #333; /* Dark background */
+      color: #f4f4f4; /* Light text for dark background */
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    .container {
+      background-color: #444; /* Slightly lighter container background */
+      padding: 20px;
+      border-radius: 8px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.5);
+      width: 100%;
+      max-width: 600px;
+      margin-bottom: 20px;
+    }
+    h1 {
+      text-align: center;
+      color: #f4f4f4; /* Light text for dark background */
+    }
+    label, input, button {
+      display: block;
+      margin-bottom: 10px;
+      width: calc(100% - 22px);
+    }
+    input[type="file"], input[type="text"], button {
+      padding: 10px;
+      border: 1px solid #555;
+      border-radius: 4px;
+      font-size: 1rem;
+      background-color: #555; /* Darker input background */
+      color: #f4f4f4; /* Light text for inputs */
+    }
+    button {
+      background-color: #009688; /* Teal button, slightly lighter for contrast */
+      color: white;
+      cursor: pointer;
+      transition: background-color 0.3s ease;
+    }
+    button:hover {
+      background-color: #00796b;
+    }
+    #reader {
+      width: 100%;
+      border: 1px solid #555;
+      border-radius: 4px;
+      margin-bottom: 20px;
+    }
+    #result {
+      margin-top: 20px;
+      padding: 15px;
+      background-color: #555; /* Darker result background */
+      border-radius: 4px;
+      color: #f4f4f4; /* Light text for results */
+    }
+    #result h3 {
+      margin-top: 0;
+    }
+    .product-info p {
+        margin: 5px 0;
+    }
+  </style>
+</head>
+<body>
+  <h1>قارئ باركود من ملف Excel</h1>
+
+  <div class="container">
+    <label for="modelSearch">بحث عن موديل:</label>
+    <input type="text" id="modelSearch" placeholder="أدخل اسم الموديل...">
+  </div>
+
+  <div class="container">
+    <label for="excelFile">رفع ملف Excel (.xlsx):</label>
+    <input type="file" id="excelFile" accept=".xlsx">
+  </div>
+
+  <div class="container">
+    <label for="barcodeSearch">بحث برقم الباركود:</label>
+    <input type="text" id="barcodeSearch" placeholder="أدخل رقم الباركود...">
+    <button id="startScanButton">بدء مسح الباركود بالكاميرا</button>
+    <div id="reader"></div>
+  </div>
+
+  <div class="container" id="resultContainer" style="display: none;">
+    <h2>نتائج البحث:</h2>
+    <div id="result"></div>
+  </div>
+
+  <script>
+    let productsData = [];
+    const fileInput = document.getElementById('excelFile');
+    const modelSearchInput = document.getElementById('modelSearch');
+    const barcodeSearchInput = document.getElementById('barcodeSearch');
+    const resultDiv = document.getElementById('result');
+    const resultContainer = document.getElementById('resultContainer');
+    const startScanButton = document.getElementById('startScanButton');
+    const readerDiv = document.getElementById('reader');
+    let html5QrCode = null;
+
+    fileInput.addEventListener('change', async (event) => {
+      const file = event.target.files[0];
+      if (file) {
+        const workbook = new ExcelJS.Workbook();
+        const reader = new FileReader();
+        reader.onload = async function(e) {
+          const buffer = e.target.result;
+          await workbook.xlsx.load(buffer);
+          const worksheet = workbook.worksheets[0];
+          productsData = [];
+          worksheet.eachRow({ includeEmpty: false }, function(row, rowNumber) {
+            if (rowNumber > 1) {
+              const rowValues = row.values;
+              productsData.push({
+                barcode: String(rowValues[1] || '').trim(),
+                itemName: String(rowValues[2] || '').trim(),
+                price: String(rowValues[3] || '').trim(),
+                dateReceived: String(rowValues[4] || '').trim(),
+                color: String(rowValues[5] || '').trim(),
+                priceBeforeDiscount: String(rowValues[6] || '').trim(),
+                priceAfterDiscount: String(rowValues[7] || '').trim(),
+                tax: String(rowValues[8] || '').trim()
+              });
+            }
+          });
+          alert('تم تحميل بيانات الملف بنجاح!');
+          console.log(productsData);
+        };
+        reader.readAsArrayBuffer(file);
+      }
+    });
+
+    function displayProductInfo(product) {
+      if (product) {
+        resultDiv.innerHTML = `
+          <div class="product-info">
+            <h3>${product.itemName}</h3>
+            <p><strong>الباركود:</strong> ${product.barcode}</p>
+            <p><strong>اللون:</strong> ${product.color}</p>
+            <p><strong>السعر:</strong> ${product.price}</p>
+            <p><strong>السعر قبل الخصم:</strong> ${product.priceBeforeDiscount}</p>
+            <p><strong>السعر بعد الخصم:</strong> ${product.priceAfterDiscount}</p>
+            <p><strong>الضريبة:</strong> ${product.tax}</p>
+            <p><strong>تاريخ الاستلام:</strong> ${product.dateReceived}</p>
+          </div>
+        `;
+      } else {
+        resultDiv.innerHTML = '<p>لم يتم العثور على المنتج.</p>';
+      }
+      resultContainer.style.display = 'block';
+    }
+
+    modelSearchInput.addEventListener('input', () => {
+      const searchTerm = modelSearchInput.value.trim().toLowerCase();
+      if (!searchTerm) {
+        resultContainer.style.display = 'none';
+        return;
+      }
+      const foundProduct = productsData.find(p => p.itemName.toLowerCase().includes(searchTerm));
+      displayProductInfo(foundProduct);
+    });
+
+    barcodeSearchInput.addEventListener('input', () => {
+      const barcode = barcodeSearchInput.value.trim();
+      if (!barcode) {
+        resultContainer.style.display = 'none';
+        return;
+      }
+      const foundProduct = productsData.find(p => p.barcode === barcode);
+      displayProductInfo(foundProduct);
+    });
+
+    function onScanSuccess(decodedText, decodedResult) {
+      barcodeSearchInput.value = decodedText;
+      const foundProduct = productsData.find(p => p.barcode === decodedText.trim());
+      displayProductInfo(foundProduct);
+      stopScanning();
+      setTimeout(() => {
+        if (html5QrCode && !html5QrCode.isScanning) {
+          startScanning();
+        }
+      }, 3000);
+    }
+
+    function onScanFailure(error) {}
+
+    function startScanning() {
+      if (!html5QrCode) {
+        html5QrCode = new Html5Qrcode("reader");
+      }
+      const config = { fps: 10, qrbox: { width: 250, height: 250 } };
+      html5QrCode.start({ facingMode: "environment" }, config, onScanSuccess, onScanFailure)
+        .catch(err => {
+          alert("فشل في تشغيل الكاميرا. يرجى التأكد من منح الأذونات.");
+        });
+      readerDiv.style.display = 'block';
+      startScanButton.textContent = 'إيقاف المسح';
+    }
+
+    function stopScanning() {
+      if (html5QrCode && html5QrCode.isScanning) {
+        html5QrCode.stop().then(() => {
+          readerDiv.style.display = 'none';
+          startScanButton.textContent = 'بدء مسح الباركود بالكاميرا';
+        });
+      }
+    }
+
+    startScanButton.addEventListener('click', () => {
+      if (html5QrCode && html5QrCode.isScanning) {
+        stopScanning();
+      } else {
+        startScanning();
+      }
+    });
+
+  </script>
+</body>
+</html>
