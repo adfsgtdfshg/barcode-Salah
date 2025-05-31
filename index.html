@@ -5,6 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>نظام الجرد - شركة القرعاوي</title>
   <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;700&display=swap" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/@zxing/browser@0.2.7/esm/index.min.js" rel="modulepreload">
+  <link href="https://cdn.jsdelivr.net/npm/sweetalert2@11" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
   <style>
     * {
       box-sizing: border-box;
@@ -109,6 +112,75 @@
       margin-bottom: 1rem;
     }
 
+    .barcode-section {
+      background: white;
+      border-radius: 12px;
+      padding: 1.5rem;
+      margin-bottom: 2rem;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    }
+
+    .barcode-input {
+      width: 100%;
+      padding: 1rem;
+      border: 2px solid #00796b;
+      border-radius: 8px;
+      font-size: 1.2rem;
+      margin-bottom: 1rem;
+      text-align: center;
+      direction: ltr;
+    }
+
+    .barcode-input:focus {
+      outline: none;
+      box-shadow: 0 0 0 3px rgba(0,121,107,0.2);
+    }
+
+    .scanner-container {
+      width: 100%;
+      max-width: 500px;
+      margin: 0 auto;
+      position: relative;
+      overflow: hidden;
+      border-radius: 8px;
+    }
+
+    #qr-reader {
+      width: 100% !important;
+      border: none !important;
+    }
+
+    .scan-button {
+      background: #00796b;
+      color: white;
+      border: none;
+      padding: 1rem 2rem;
+      border-radius: 8px;
+      font-size: 1.2rem;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      margin: 1rem 0;
+      width: 100%;
+    }
+
+    .scan-button:hover {
+      background: #00695c;
+      transform: translateY(-2px);
+    }
+
+    .guide-box {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 70%;
+      height: 200px;
+      border: 3px solid #00796b;
+      border-radius: 8px;
+      pointer-events: none;
+      z-index: 1000;
+    }
+
     @media (max-width: 768px) {
       .container {
         grid-template-columns: 1fr;
@@ -122,10 +194,21 @@
 
       .main {
         margin-right: 0;
+        padding: 1rem;
       }
 
       .grid {
         grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      }
+
+      .barcode-input {
+        font-size: 1rem;
+        padding: 0.8rem;
+      }
+
+      .scan-button {
+        font-size: 1rem;
+        padding: 0.8rem 1.5rem;
       }
     }
   </style>
@@ -151,6 +234,17 @@
       </ul>
     </nav>
     <main class="main">
+      <div class="barcode-section">
+        <h2>قارئ الباركود</h2>
+        <input type="text" class="barcode-input" id="barcodeInput" placeholder="أدخل رقم الباركود يدوياً..." autocomplete="off">
+        <button class="scan-button" id="scanButton">
+          <span>📷</span> مسح الباركود
+        </button>
+        <div class="scanner-container" id="scannerContainer" style="display: none;">
+          <div id="qr-reader"></div>
+          <div class="guide-box"></div>
+        </div>
+      </div>
       <div class="grid">
         <div class="card"><span>📄</span>الفواتير</div>
         <div class="card"><span>🛒</span>الأصناف</div>
@@ -165,148 +259,98 @@
       </div>
     </main>
   </div>
+
+  <script type="module">
+    import { BrowserMultiFormatReader } from 'https://cdn.jsdelivr.net/npm/@zxing/browser@0.2.7/esm/index.min.js';
+
+    let codeReader = new BrowserMultiFormatReader();
+    let selectedDeviceId;
+    const scanButton = document.getElementById('scanButton');
+    const scannerContainer = document.getElementById('scannerContainer');
+    const barcodeInput = document.getElementById('barcodeInput');
+
+    // Focus barcode input on page load
+    window.addEventListener('DOMContentLoaded', () => {
+      barcodeInput.focus();
+    });
+
+    // Clean barcode input
+    barcodeInput.addEventListener('input', (e) => {
+      e.target.value = e.target.value.replace(/[^\w\d]/g, '');
+    });
+
+    // Handle Enter key
+    barcodeInput.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter' && e.target.value.length >= 5) {
+        handleBarcode(e.target.value);
+      } else if (e.key === 'Enter') {
+        Swal.fire({
+          icon: 'warning',
+          title: 'تنبيه',
+          text: 'يجب أن يكون الباركود 5 أرقام على الأقل',
+          confirmButtonText: 'حسناً'
+        });
+      }
+    });
+
+    async function startScanner() {
+      try {
+        const devices = await BrowserMultiFormatReader.listVideoInputDevices();
+        selectedDeviceId = devices.find(d => d.label.toLowerCase().includes('back'))?.deviceId || devices[0]?.deviceId;
+
+        if (!selectedDeviceId) {
+          throw new Error('لم يتم العثور على كاميرا');
+        }
+
+        scannerContainer.style.display = 'block';
+        scanButton.textContent = '🛑 إيقاف المسح';
+
+        await codeReader.decodeFromVideoDevice(selectedDeviceId, 'qr-reader', (result, err) => {
+          if (result) {
+            handleBarcode(result.getText());
+          }
+        });
+      } catch (err) {
+        Swal.fire({
+          icon: 'error',
+          title: 'خطأ',
+          text: 'فشل في تشغيل الكاميرا: ' + err.message,
+          confirmButtonText: 'حسناً'
+        });
+        stopScanner();
+      }
+    }
+
+    function stopScanner() {
+      codeReader.reset();
+      scannerContainer.style.display = 'none';
+      scanButton.textContent = '📷 مسح الباركود';
+    }
+
+    scanButton.addEventListener('click', () => {
+      if (scannerContainer.style.display === 'none') {
+        startScanner();
+      } else {
+        stopScanner();
+      }
+    });
+
+    function handleBarcode(barcode) {
+      Swal.fire({
+        icon: 'success',
+        title: 'تم المسح بنجاح',
+        text: 'الباركود: ' + barcode,
+        confirmButtonText: 'حسناً'
+      });
+      barcodeInput.value = barcode;
+      stopScanner();
+      barcodeInput.focus();
+    }
+
+    // Clean up on page unload
+    window.addEventListener('beforeunload', () => {
+      stopScanner();
+    });
+  </script>
 </body>
 </html>
-
-
-// Autofocus barcode input on page load and after each scan
-function focusBarcodeInput() {
-    const input = document.getElementById('manualBarcode');
-    if (input) {
-        input.focus();
-        input.select();
-    }
-}
-window.addEventListener('DOMContentLoaded', focusBarcodeInput);
-
-// Clean and validate barcode input
-function cleanBarcodeInput(value) {
-    // Remove spaces and unwanted characters (keep digits and letters only)
-    return value.replace(/[^\w\d]/g, '').trim();
-}
-
-// Enhanced search button click
-const barcodeInput = document.getElementById('manualBarcode');
-document.getElementById('searchBtn').addEventListener('click', function() {
-    let barcode = barcodeInput.value;
-    barcode = cleanBarcodeInput(barcode);
-    barcodeInput.value = barcode;
-    if (barcode.length < 5) {
-        Swal.fire({
-            icon: 'warning',
-            title: 'تنبيه',
-            text: 'يرجى إدخال رقم باركود صالح (5 خانات أو أكثر)'
-        });
-        focusBarcodeInput();
-        return;
-    }
-    searchProduct(barcode);
-    focusBarcodeInput();
-});
-
-// Search on Enter key
-barcodeInput.addEventListener('keypress', function(e) {
-    if (e.key === 'Enter') {
-        document.getElementById('searchBtn').click();
-    }
-});
-
-// Instant validation on input
-barcodeInput.addEventListener('input', function() {
-    let cleaned = cleanBarcodeInput(barcodeInput.value);
-    if (barcodeInput.value !== cleaned) {
-        barcodeInput.value = cleaned;
-    }
-});
-
-// After successful scan, focus input
-function onScanSuccess(decodedText) {
-    scanner.pause();
-    searchProduct(decodedText);
-    setTimeout(() => {
-        scanner.resume();
-        focusBarcodeInput();
-    }, 3000);
-}
-<!-- ZXing library CDN -->
-<script type="module">
-  import { BrowserMultiFormatReader } from 'https://cdn.jsdelivr.net/npm/@zxing/browser@0.2.7/esm/index.min.js';
-  let codeReader;
-  let selectedDeviceId;
-  let scanning = false;
-  let torchOn = false;
-  const scannerContainer = document.getElementById('scanner-container');
-  const qrReader = document.getElementById('qr-reader');
-  const scanBtn = document.getElementById('startScannerBtn');
-  const torchBtn = document.createElement('button');
-  torchBtn.innerHTML = '<i class="fa fa-bolt"></i>';
-  torchBtn.className = 'btn btn-warning';
-  torchBtn.style.margin = '10px';
-  torchBtn.style.display = 'none';
-  scannerContainer.appendChild(torchBtn);
-  function showGuideBox() {
-    let guide = document.getElementById('guide-box');
-    if (!guide) {
-      guide = document.createElement('div');
-      guide.id = 'guide-box';
-      guide.style.position = 'absolute';
-      guide.style.border = '3px dashed #00c853';
-      guide.style.width = '70%';
-      guide.style.height = '60%';
-      guide.style.top = '20%';
-      guide.style.left = '15%';
-      guide.style.pointerEvents = 'none';
-      scannerContainer.appendChild(guide);
-    }
-  }
-  function hideGuideBox() {
-    const guide = document.getElementById('guide-box');
-    if (guide) guide.remove();
-  }
-  async function startZXingScanner() {
-    if (scanning) return;
-    scanning = true;
-    qrReader.innerHTML = '';
-    showGuideBox();
-    codeReader = new BrowserMultiFormatReader();
-    const devices = await BrowserMultiFormatReader.listVideoInputDevices();
-    // Prefer back camera
-    selectedDeviceId = devices.find(d => d.label.toLowerCase().includes('back'))?.deviceId || devices[0]?.deviceId;
-    if (!selectedDeviceId) {
-      Swal.fire('No camera found', '', 'error');
-      scanning = false;
-      return;
-    }
-    try {
-      await codeReader.decodeFromVideoDevice(selectedDeviceId, qrReader, (result, err, controls) => {
-        if (result) {
-          scanning = false;
-          hideGuideBox();
-          controls.stop();
-          Swal.fire({title:'Barcode found!',text:result.getText(),icon:'success',timer:2000,showConfirmButton:false});
-          document.getElementById('manualBarcode').value = result.getText();
-          document.getElementById('manualBarcode').dispatchEvent(new Event('input'));
-          setTimeout(()=>{startZXingScanner();}, 2500);
-        } else if (err && !(err instanceof ZXing.NotFoundException)) {
-          Swal.fire('Scan error', err.message, 'error');
-        }
-      }, {
-        video: { facingMode: { exact: 'environment' } },
-        torch: torchOn
-      });
-      // Torch control
-      torchBtn.style.display = 'inline-block';
-      torchBtn.onclick = async () => {
-        torchOn = !torchOn;
-        await codeReader.reset();
-        scanning = false;
-        startZXingScanner();
-      };
-    } catch (e) {
-      Swal.fire('Camera error', e.message, 'error');
-      scanning = false;
-      hideGuideBox();
-    }
-  }
-  scanBtn.onclick = startZXingScanner;
-</script>
