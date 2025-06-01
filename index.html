@@ -98,7 +98,7 @@
           <th>Color</th>
           <th>Quantity On Hand</th>
           <th>After discount</th>
-          <th>Tax</th>
+          <th>DIS</th>
         </tr>
       </thead>
       <tbody id="resultBody"></tbody>
@@ -142,15 +142,43 @@
               if (rowNumber > 1) {
                 const rowValues = row.values;
                 const basePrice = String(rowValues[3] || '').trim();
+                let dateReceived = String(rowValues[4] || '').trim();
+                let year = 0;
+                
+                // Remove any non-date values
+                if (dateReceived && !isNaN(new Date(dateReceived))) {
+                  const dateObj = new Date(dateReceived);
+                  if (!isNaN(dateObj)) {
+                    year = dateObj.getFullYear();
+                    dateReceived = dateObj.toISOString().split('T')[0]; // Standardize date format
+                  } else {
+                    dateReceived = ''; // Clear invalid dates
+                  }
+                } else {
+                  dateReceived = ''; // Clear non-date values
+                }
+                let discount = '0%';
+                if (year >= 2024) {
+                  discount = '20%';
+                } else if (year === 2023) {
+                  discount = '30%';
+                } else if (year <= 2022 && year > 0) {
+                  discount = '50%';
+                }
+                // Calculate discounted price
+                const priceWithTax = calculatePriceWithTax(basePrice);
+                const discountValue = parseFloat(discount.replace('%', '')) / 100;
+                const discountedPrice = priceWithTax * (1 - discountValue);
+                
                 productsData.push({
                   barcode: String(rowValues[1] || '').trim(),
                   itemName: String(rowValues[2] || '').trim(),
-                  price: calculatePriceWithTax(basePrice),
-                  dateReceived: String(rowValues[4] || '').trim(),
+                  price: priceWithTax,
+                  dateReceived: dateReceived,
                   color: String(rowValues[5] || '').trim(),
-                  quantity: String(rowValues[6] || '').trim(), // الكمية بدلاً من السعر قبل الخصم
-                  priceAfterDiscount: String(rowValues[7] || '').trim(),
-                  tax: String(rowValues[8] || '').trim()
+                  quantity: String(rowValues[6] || '').trim(),
+                  priceAfterDiscount: discountedPrice.toFixed(2),
+                  tax: discount
                 });
               }
             });
