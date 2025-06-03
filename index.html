@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>قارئ باركود من Excel</title>
-  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;700&family=Poppins:wght@400;700&display=swap" rel="stylesheet">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.3.0/exceljs.min.js"></script>
   <style>
     * {
@@ -87,6 +87,11 @@
       <label for="barcodeInput">بحث برقم الباركود:</label>
       <input type="text" id="barcodeInput" placeholder="ادخل رقم الباركود...">
     </div>
+    <!-- مكان عرض قارئ الباركود -->
+    <div id="reader" style="width: 100%; max-width: 400px; margin: auto;"></div>
+    <p style="text-align: center; color: #666;">Please allow camera access to scan the barcode smoothly.</p>
+    <!-- عرض النتيجة -->
+    <p id="barcode-result" style="text-align: center; font-weight: bold;"></p>
 
     <table id="resultTable">
       <thead>
@@ -105,7 +110,48 @@
     </table>
   </div>
 
+  <footer style="background-color: #f8f9fa; padding: 30px 20px; text-align: center; font-family: 'Poppins', sans-serif; font-size: 16px; color: #222;">
+    <p><strong>Company Name:</strong> Abdulshakour Al-Qarawi Trading Group</p>
+    <p><strong>Website Designed by:</strong> Ahmed Salah</p>
+    <p><strong>Branches Supervisor:</strong> Mr. Ahmed Abd El-Aaty</p>
+  </footer>
+
+  <!-- تحميل مكتبة قارئ الباركود -->
+  <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
   <script>
+    // إعداد قارئ الباركود مع تفعيل الكاميرا الخلفية افتراضيًا
+    function onScanSuccess(decodedText, decodedResult) {
+      document.getElementById('barcode-result').innerText = `Barcode: ${decodedText}`;
+      document.getElementById('barcodeInput').value = decodedText;
+      html5QrcodeScanner.clear();
+    }
+    function onScanError(errorMessage) {
+      // يمكن عرض رسالة خطأ أو تجاهلها حسب الحاجة
+    }
+    // التأكد من دعم HTTPS
+    if (location.protocol !== 'https:') {
+      alert('Camera access requires HTTPS. Please use a secure connection.');
+    }
+    // اختبار صلاحية الكاميرا
+    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+      navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
+        .catch(error => {
+          alert("Camera access denied or not available on this device.");
+        });
+    }
+    const html5QrcodeScanner = new Html5QrcodeScanner(
+      "reader",
+      {
+        fps: 10,
+        qrbox: { width: 250, height: 250 },
+        supportedScanTypes: [Html5QrcodeScanType.SCAN_TYPE_CAMERA],
+        rememberLastUsedCamera: true,
+        videoConstraints: { facingMode: "environment" }
+      },
+      false
+    );
+    html5QrcodeScanner.render(onScanSuccess, onScanError);
+
     let productsData = [];
     const fileInput = document.getElementById('excelFile');
     const searchInput = document.getElementById('searchInput');
