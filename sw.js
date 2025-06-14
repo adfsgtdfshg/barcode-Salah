@@ -1,10 +1,12 @@
-const CACHE_NAME = 'excel-reader-v2';
+const CACHE_NAME = 'excel-reader-v3';
 const urlsToCache = [
   '/',
   '/index.html',
   '/manifest.webmanifest',
-  'https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.3.0/exceljs.min.js',
-  'https://fonts.googleapis.com/css2?family=Cairo:wght@400;700&family=Poppins:wght@400;700&display=swap'
+  'https://cdn.jsdelivr.net/npm/exceljs/dist/exceljs.min.js',
+  'https://fonts.googleapis.com/css2?family=Cairo:wght@400;700&display=swap',
+  'https://fonts.gstatic.com/s/cairo/v28/SLXgc1nY6HkvangtZmpQdkhzfH5lkSs2SgRjCAGMQ1z0hGA-W1Q.woff2',
+  'https://fonts.gstatic.com/s/cairo/v28/SLXgc1nY6HkvangtZmpQdkhzfH5lkSs2SgRjCAGMQ1z0hL4-W1Q.woff2'
 ];
 
 self.addEventListener('install', event => {
@@ -17,7 +19,14 @@ self.addEventListener('install', event => {
 self.addEventListener('fetch', event => {
   event.respondWith(
     caches.match(event.request)
-      .then(response => response || fetch(event.request))
+      .then(response => {
+        // إذا وجدنا استجابة في الكاش، نعيدها
+        if (response) {
+          return response;
+        }
+        // وإلا نقوم بجلب الطلب من الشبكة
+        return fetch(event.request);
+      })
   );
 });
 

@@ -4,8 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>قارئ باركود من Excel</title>
-  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;700&family=Poppins:wght@400;700&display=swap" rel="stylesheet">
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.3.0/exceljs.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/exceljs/dist/exceljs.min.js" defer></script>
   <style>
     * {
       box-sizing: border-box;
@@ -86,6 +86,20 @@
     #file-info p {
       margin: 5px 0;
     }
+
+    /* تحسين الاستجابة للأجهزة المختلفة */
+    @media (max-width: 600px) {
+      body {
+        padding: 10px;
+      }
+      .container {
+        padding: 15px;
+      }
+      th, td {
+        padding: 8px;
+        font-size: 0.9rem;
+      }
+    }
   </style>
 </head>
 <body>
@@ -110,6 +124,8 @@
       </div>
     </div>
 
+    <div id="resultBox" style="margin-top: 20px; padding: 15px; background-color: #555; border-radius: 4px; display: none;"></div>
+
     <table id="resultTable">
       <thead>
         <tr>
@@ -126,14 +142,15 @@
     </table>
   </div>
 
-  <footer style="background-color: #f8f9fa; padding: 30px 20px; text-align: center; font-family: 'Poppins', sans-serif; font-size: 16px; color: #222;">
+  <footer style="background-color: #f8f9fa; padding: 30px 20px; text-align: center; font-size: 16px; color: #222;">
     <p><strong>Company Name:</strong> Abdulshakour Al-Qarawi Trading Group</p>
     <p><strong>Website Designed by:</strong> Ahmed Salah</p>
     <p><strong>Branches Supervisor:</strong> Mr. Ahmed Abd El-Aaty</p>
   </footer>
 
-  <script>
+  <script defer>
     let productsData = [];
+    let isDataLoaded = false;
     const fileInput = document.getElementById('excelFile');
     const searchInput = document.getElementById('searchInput');
     const resultBody = document.getElementById('resultBody');
@@ -170,8 +187,10 @@
           sessionStorage.setItem('saveDate', new Date().toISOString());
           updateFileInfo(fileName, data.length);
           alert(`تم حفظ ${data.length} منتج بنجاح`);
+          isDataLoaded = true;
         } catch (e) {
           alert('خطأ في حفظ البيانات. قد تكون البيانات كبيرة جداً.');
+          isDataLoaded = false;
         }
       } else {
         alert('التخزين المحلي غير مدعوم. سيعمل التطبيق في وضع الذاكرة فقط.');
@@ -180,6 +199,8 @@
 
     // استرجاع البيانات
     const loadSavedData = () => {
+      if (isDataLoaded) return; // تجنب إعادة تحميل البيانات
+
       if (storageAvailable('sessionStorage')) {
         const savedData = sessionStorage.getItem('excelData');
         const fileName = sessionStorage.getItem('fileName');
@@ -187,9 +208,87 @@
           productsData = JSON.parse(savedData);
           updateFileInfo(fileName, productsData.length);
           alert(`تم استرجاع ${productsData.length} منتج من التخزين المحلي`);
+          isDataLoaded = true;
         }
       }
     };
+
+    // معالجة تحميل ملف Excel
+    const processExcelFile = async (file) => {
+      if (!file) return;
+      
+      const workbook = new ExcelJS.Workbook();
+      try {
+        const reader = new FileReader();
+        reader.onload = async function(e) {
+          const buffer = e.target.result;
+          await workbook.xlsx.load(buffer);
+          const worksheet = workbook.worksheets[0];
+          productsData = [];
+          
+          worksheet.eachRow({ includeEmpty: false }, function(row, rowNumber) {
+            if (rowNumber > 1) {
+              const rowValues = row.values;
+              const basePrice = String(rowValues[3] || '').trim();
+              let dateReceived = String(rowValues[4] || '').trim();
+              let year = 0;
+              
+              if (dateReceived && !isNaN(new Date(dateReceived))) {
+                const dateObj = new Date(dateReceived);
+                if (!isNaN(dateObj)) {
+                  year = dateObj.getFullYear();
+                  dateReceived = dateObj.toISOString().split('T')[0];
+                } else {
+                  dateReceived = '';
+                }
+              } else {
+                dateReceived = '';
+              }
+
+              let discount = '0%';
+              if (year >= 2024) {
+                discount = '20%';
+              } else if (year === 2023) {
+                discount = '30%';
+              } else if (year <= 2022 && year > 0) {
+                discount = '50%';
+              }
+
+              const priceWithTax = calculatePriceWithTax(basePrice);
+              const discountValue = parseFloat(discount.replace('%', '')) / 100;
+              const discountedPrice = priceWithTax * (1 - discountValue);
+              
+              productsData.push({
+                itemName: String(rowValues[2] || '').trim(),
+                price: priceWithTax,
+                dateReceived: dateReceived,
+                color: String(rowValues[5] || '').trim(),
+                quantity: String(rowValues[6] || '').trim(),
+                priceAfterDiscount: discountedPrice.toFixed(2),
+                tax: discount
+              });
+            }
+          });
+          saveData(productsData, file.name);
+        };
+        reader.readAsArrayBuffer(file);
+      } catch (error) {
+        alert('حدث خطأ في قراءة الملف');
+        console.error(error);
+        isDataLoaded = false;
+      }
+    };
+
+    // معالج حدث تغيير الملف
+    fileInput.addEventListener('change', async (event) => {
+      const file = event.target.files[0];
+      if (file && !isDataLoaded) {
+        await processExcelFile(file);
+      } else if (isDataLoaded) {
+        alert('تم تحميل البيانات بالفعل. قم بتحديث الصفحة لتحميل ملف جديد.');
+        fileInput.value = ''; // إعادة تعيين حقل اختيار الملف
+      }
+    });
 
     // حساب السعر مع الضريبة
     function calculatePriceWithTax(price) {
@@ -255,106 +354,69 @@
       }
     }
 
-    // إضافة مستمع حدث للزر البحث
-    document.getElementById('searchButton').addEventListener('click', () => {
-      const query = searchInput.value;
-      if (query.trim()) {
-        searchProducts(query);
-      }
-    });
-
-    // تعديل مستمع حدث البحث الفوري مع تأخير زمني
-    searchInput.addEventListener('input', (e) => {
-      clearTimeout(searchTimeout);
-      const query = e.target.value;
-      
-      if (query.length === 0) {
-        resultTable.style.display = 'none';
+    // تحسين وظيفة البحث
+    function search() {
+      const query = document.getElementById('searchInput').value.trim();
+      if (!query) {
+        document.getElementById('resultBox').innerHTML = '';
         return;
       }
-      
-      if (query.length >= 2) {
-        searchTimeout = setTimeout(() => {
-          searchProducts(query);
-        }, 300);
+    
+      const result = productsData.find(p => 
+        (p && (p.itemName === query || p.color === query))
+      );
+    
+      const box = document.getElementById('resultBox');
+      if (result) {
+        box.innerHTML = `
+          ✅ الاسم: ${result.itemName}<br>
+          اللون: ${result.color}<br>
+          السعر: ${result.price}<br>
+          السعر بعد الخصم: ${result.priceAfterDiscount}<br>
+          الكمية: ${result.quantity}
+        `;
+        box.style.display = 'block';
+      } else {
+        box.innerHTML = '❌ لم يتم العثور على المنتج';
+        box.style.display = 'block';
+      }
+    }
+
+    // إضافة مستمع حدث للزر البحث
+    document.getElementById('searchButton').addEventListener('click', search);
+    
+    // مستمع حدث للبحث أثناء الكتابة
+    searchInput.addEventListener('input', (e) => {
+      const query = e.target.value.trim();
+      if (query.length === 0) {
+        document.getElementById('resultBox').style.display = 'none';
+      } else if (query.length >= 2) {
+        document.getElementById('resultBox').style.display = 'block';
+        search();
       }
     });
-
-    // إضافة مستمع حدث للبحث عند الضغط على Enter
+    
+    // مستمع حدث للبحث عند الضغط على Enter
     searchInput.addEventListener('keypress', (e) => {
-      if (e.key === 'Enter' && e.target.value.trim()) {
-        clearTimeout(searchTimeout);
-        searchProducts(e.target.value);
+      if (e.key === 'Enter') {
+        search();
       }
     });
 
-    // استرجاع البيانات عند تحميل الصفحة
-    window.addEventListener('load', loadSavedData);
+    // تحميل البيانات تلقائياً عند فتح الموقع
+    window.addEventListener('DOMContentLoaded', loadExcelOnce);
 
-    // معالجة تحميل ملف Excel
-    fileInput.addEventListener('change', async (event) => {
-      const file = event.target.files[0];
-      if (file) {
-        const workbook = new ExcelJS.Workbook();
-        try {
-          const reader = new FileReader();
-          reader.onload = async function(e) {
-            const buffer = e.target.result;
-            await workbook.xlsx.load(buffer);
-            const worksheet = workbook.worksheets[0];
-            productsData = [];
-            worksheet.eachRow({ includeEmpty: false }, function(row, rowNumber) {
-              if (rowNumber > 1) {
-                const rowValues = row.values;
-                const basePrice = String(rowValues[3] || '').trim();
-                let dateReceived = String(rowValues[4] || '').trim();
-                let year = 0;
-                
-                if (dateReceived && !isNaN(new Date(dateReceived))) {
-                  const dateObj = new Date(dateReceived);
-                  if (!isNaN(dateObj)) {
-                    year = dateObj.getFullYear();
-                    dateReceived = dateObj.toISOString().split('T')[0];
-                  } else {
-                    dateReceived = '';
-                  }
-                } else {
-                  dateReceived = '';
-                }
-
-                let discount = '0%';
-                if (year >= 2024) {
-                  discount = '20%';
-                } else if (year === 2023) {
-                  discount = '30%';
-                } else if (year <= 2022 && year > 0) {
-                  discount = '50%';
-                }
-
-                const priceWithTax = calculatePriceWithTax(basePrice);
-                const discountValue = parseFloat(discount.replace('%', '')) / 100;
-                const discountedPrice = priceWithTax * (1 - discountValue);
-                
-                productsData.push({
-                  itemName: String(rowValues[2] || '').trim(),
-                  price: priceWithTax,
-                  dateReceived: dateReceived,
-                  color: String(rowValues[5] || '').trim(),
-                  quantity: String(rowValues[6] || '').trim(),
-                  priceAfterDiscount: discountedPrice.toFixed(2),
-                  tax: discount
-                });
-              }
-            });
-            saveData(productsData, file.name);
-          };
-          reader.readAsArrayBuffer(file);
-        } catch (error) {
-          alert('حدث خطأ في قراءة الملف');
-          console.error(error);
-        }
+    // وظيفة تحميل البيانات مرة واحدة
+    async function loadExcelOnce() {
+      if (isDataLoaded) return;
+      
+      const fileInput = document.getElementById('excelFile');
+      if (fileInput.files.length > 0) {
+        await processExcelFile(fileInput.files[0]);
+      } else {
+        loadSavedData();
       }
-    });
+    }
   </script>
 </body>
 </html>
