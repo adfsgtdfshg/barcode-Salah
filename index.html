@@ -413,6 +413,7 @@
       if (isDataLoaded) return;
       
       const excelUrl = 'https://github.com/adfsgtdfshg/barcode-Salah/raw/main/barcode_ready.xlsx';
+      const proxyUrl = 'https://cors-anywhere.herokuapp.com/';
       
       try {
         // عرض رسالة تحميل
@@ -444,13 +445,43 @@
           }
         }
         
-        // تحميل الملف من GitHub
-        const response = await fetch(excelUrl);
-        if (!response.ok) {
-          throw new Error(`فشل تحميل الملف: ${response.status} ${response.statusText}`);
+        // محاولة تحميل الملف من GitHub مع استخدام proxy إذا لزم الأمر
+        let arrayBuffer;
+        try {
+          // المحاولة الأولى: تحميل مباشر
+          const response = await fetch(excelUrl, {
+            mode: 'cors',
+            headers: {
+              'Origin': window.location.origin
+            }
+          });
+          
+          if (!response.ok) {
+            throw new Error(`فشل تحميل الملف: ${response.status} ${response.statusText}`);
+          }
+          
+          arrayBuffer = await response.arrayBuffer();
+        } catch (directError) {
+          console.log('فشل التحميل المباشر، جاري استخدام proxy...', directError);
+          
+          // المحاولة الثانية: استخدام proxy
+          try {
+            const proxyResponse = await fetch(proxyUrl + excelUrl, {
+              headers: {
+                'X-Requested-With': 'XMLHttpRequest'
+              }
+            });
+            
+            if (!proxyResponse.ok) {
+              throw new Error(`فشل تحميل الملف عبر proxy: ${proxyResponse.status} ${proxyResponse.statusText}`);
+            }
+            
+            arrayBuffer = await proxyResponse.arrayBuffer();
+          } catch (proxyError) {
+            throw new Error(`فشل تحميل الملف: ${proxyError.message}`);
+          }
         }
         
-        const arrayBuffer = await response.arrayBuffer();
         const workbook = new ExcelJS.Workbook();
         await workbook.xlsx.load(arrayBuffer);
         
@@ -525,6 +556,23 @@
         if (loadingMessage) {
           loadingMessage.innerHTML = `فشل تحميل البيانات: ${error.message}`;
           loadingMessage.style.backgroundColor = '#f44336';
+        }
+        
+        // إضافة زر لإعادة المحاولة
+        const retryButton = document.createElement('button');
+        retryButton.textContent = 'إعادة المحاولة';
+        retryButton.style.marginTop = '10px';
+        retryButton.style.padding = '5px 10px';
+        retryButton.style.backgroundColor = '#009688';
+        retryButton.style.color = 'white';
+        retryButton.style.border = 'none';
+        retryButton.style.borderRadius = '4px';
+        retryButton.style.cursor = 'pointer';
+        retryButton.onclick = loadExcelFromGitHub;
+        
+        if (loadingMessage) {
+          loadingMessage.appendChild(document.createElement('br'));
+          loadingMessage.appendChild(retryButton);
         }
       }
     }
