@@ -96,6 +96,10 @@
     <table id="resultTable">
       <thead>
         <tr>
+<<<<<<< HEAD
+=======
+          <th>UPC Code</th>
+>>>>>>> 6253ce7f48c381f3d96d705174cad5b8ed8b829a
           <th>Parent Item: Name</th>
           <th>Item: Sales Price</th>
           <th>Last Received</th>
@@ -154,6 +158,10 @@
     let productsData = [];
     const fileInput = document.getElementById('excelFile');
     const searchInput = document.getElementById('searchInput');
+<<<<<<< HEAD
+=======
+    const barcodeInput = document.getElementById('barcodeInput');
+>>>>>>> 6253ce7f48c381f3d96d705174cad5b8ed8b829a
     const resultBody = document.getElementById('resultBody');
     const resultTable = document.getElementById('resultTable');
 
@@ -244,6 +252,10 @@
         results.forEach(product => {
           const row = document.createElement('tr');
           row.innerHTML = `
+<<<<<<< HEAD
+=======
+            <td>${product.barcode}</td>
+>>>>>>> 6253ce7f48c381f3d96d705174cad5b8ed8b829a
             <td>${product.itemName}</td>
             <td>${product.price}</td>
             <td>${product.dateReceived}</td>
@@ -274,7 +286,23 @@
       displayResults(results);
     }
 
+<<<<<<< HEAD
     searchInput.addEventListener('input', (e) => searchProducts(e.target.value));
+=======
+    function searchByBarcode(barcode) {
+      if (!barcode) {
+        resultTable.style.display = 'none';
+        return;
+      }
+      const results = productsData.filter(product => 
+        product.barcode === barcode
+      );
+      displayResults(results);
+    }
+
+    searchInput.addEventListener('input', (e) => searchProducts(e.target.value));
+    barcodeInput.addEventListener('input', (e) => searchByBarcode(e.target.value));
+>>>>>>> 6253ce7f48c381f3d96d705174cad5b8ed8b829a
   </script>
 </body>
 </html>
