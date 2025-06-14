@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>قارئ باركود من Excel</title>
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;700&family=Poppins:wght@400;700&display=swap" rel="stylesheet">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.3.0/exceljs.min.js"></script>
+  <style>
+    * {
+      box-sizing: border-box;
+      font-family: 'Cairo', sans-serif;
+    }
+
+    body {
+      margin: 0;
+      padding: 20px;
+      background-color: #333;
+      color: #f4f4f4;
+    }
+
+    .container {
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 20px;
+      background-color: #444;
+      border-radius: 8px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.5);
+    }
+
+    .input-group {
+      margin-bottom: 20px;
+    }
+
+    label {
+      display: block;
+      margin-bottom: 5px;
+    }
+
+    input[type="file"], input[type="text"] {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid #555;
+      border-radius: 4px;
+      background-color: #555;
+      color: #f4f4f4;
+      font-size: 1rem;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 20px;
+      background-color: #555;
+      display: none;
+    }
+
+    th, td {
+      padding: 12px;
+      text-align: right;
+      border: 1px solid #666;
+    }
+
+    th {
+      background-color: #009688;
+      color: white;
+    }
+
+    tr:nth-child(even) {
+      background-color: #4a4a4a;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="input-group">
+      <label for="excelFile">اختر ملف Excel:</label>
+      <input type="file" id="excelFile" accept=".xlsx">
+    </div>
+
+    <div class="input-group">
+      <label for="searchInput">بحث في كامل الملف:</label>
+      <input type="text" id="searchInput" placeholder="ادخل نص للبحث...">
+    </div>
+
+    <div class="input-group">
+      <label for="barcodeInput">بحث برقم الباركود:</label>
+      <input type="text" id="barcodeInput" placeholder="ادخل رقم الباركود...">
+    </div>
+    <!-- مكان عرض قارئ الباركود -->
+    <div id="reader" style="width: 100%; max-width: 400px; margin: auto;"></div>
+    <p style="text-align: center; color: #666;">Please allow camera access to scan the barcode smoothly.</p>
+    <!-- عرض النتيجة -->
+    <p id="barcode-result" style="text-align: center; font-weight: bold;"></p>
+
+    <table id="resultTable">
+      <thead>
+        <tr>
+          <th>Parent Item: Name</th>
+          <th>Item: Sales Price</th>
+          <th>Last Received</th>
+          <th>Color</th>
+          <th>Quantity On Hand</th>
+          <th>After discount</th>
+          <th>DIS</th>
+        </tr>
+      </thead>
+      <tbody id="resultBody"></tbody>
+    </table>
+  </div>
+
+  <footer style="background-color: #f8f9fa; padding: 30px 20px; text-align: center; font-family: 'Poppins', sans-serif; font-size: 16px; color: #222;">
+    <p><strong>Company Name:</strong> Abdulshakour Al-Qarawi Trading Group</p>
+    <p><strong>Website Designed by:</strong> Ahmed Salah</p>
+    <p><strong>Branches Supervisor:</strong> Mr. Ahmed Abd El-Aaty</p>
+  </footer>
+
+  <!-- تحميل مكتبة قارئ الباركود -->
+  <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+  <script>
+    // إعداد قارئ الباركود مع تفعيل الكاميرا الخلفية افتراضيًا
+    function onScanSuccess(decodedText, decodedResult) {
+      document.getElementById('barcode-result').innerText = `Barcode: ${decodedText}`;
+      document.getElementById('barcodeInput').value = decodedText;
+      html5QrcodeScanner.clear();
+    }
+    function onScanError(errorMessage) {
+      // يمكن عرض رسالة خطأ أو تجاهلها حسب الحاجة
+    }
+    // التأكد من دعم HTTPS
+    if (location.protocol !== 'https:') {
+      alert('Camera access requires HTTPS. Please use a secure connection.');
+    }
+    // اختبار صلاحية الكاميرا
+    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+      navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
+        .catch(error => {
+          alert("Camera access denied or not available on this device.");
+        });
+    }
+    const html5QrcodeScanner = new Html5QrcodeScanner(
+      "reader",
+      {
+        fps: 10,
+        qrbox: { width: 250, height: 250 },
+        supportedScanTypes: [Html5QrcodeScanType.SCAN_TYPE_CAMERA],
+        rememberLastUsedCamera: true,
+        videoConstraints: { facingMode: "environment" }
+      },
+      false
+    );
+    html5QrcodeScanner.render(onScanSuccess, onScanError);
+
+    let productsData = [];
+    const fileInput = document.getElementById('excelFile');
+    const searchInput = document.getElementById('searchInput');
+    const resultBody = document.getElementById('resultBody');
+    const resultTable = document.getElementById('resultTable');
+
+    // استرجاع البيانات المخزنة عند تحميل الصفحة
+    window.addEventListener('load', () => {
+      const savedData = localStorage.getItem('excelData');
+      if (savedData) {
+        productsData = JSON.parse(savedData);
+      }
+    });
+
+    function calculatePriceWithTax(price) {
+      if (!price || isNaN(price)) return '0';
+      const numPrice = parseFloat(price);
+      return (numPrice * 1.15).toFixed(2); // إضافة 15% ضريبة
+    }
+
+    fileInput.addEventListener('change', async (event) => {
+      const file = event.target.files[0];
+      if (file) {
+        const workbook = new ExcelJS.Workbook();
+        try {
+          const reader = new FileReader();
+          reader.onload = async function(e) {
+            const buffer = e.target.result;
+            await workbook.xlsx.load(buffer);
+            const worksheet = workbook.worksheets[0];
+            productsData = [];
+            worksheet.eachRow({ includeEmpty: false }, function(row, rowNumber) {
+              if (rowNumber > 1) {
+                const rowValues = row.values;
+                const basePrice = String(rowValues[3] || '').trim();
+                let dateReceived = String(rowValues[4] || '').trim();
+                let year = 0;
+                
+                // Remove any non-date values
+                if (dateReceived && !isNaN(new Date(dateReceived))) {
+                  const dateObj = new Date(dateReceived);
+                  if (!isNaN(dateObj)) {
+                    year = dateObj.getFullYear();
+                    dateReceived = dateObj.toISOString().split('T')[0]; // Standardize date format
+                  } else {
+                    dateReceived = ''; // Clear invalid dates
+                  }
+                } else {
+                  dateReceived = ''; // Clear non-date values
+                }
+                let discount = '0%';
+                if (year >= 2024) {
+                  discount = '20%';
+                } else if (year === 2023) {
+                  discount = '30%';
+                } else if (year <= 2022 && year > 0) {
+                  discount = '50%';
+                }
+                // Calculate discounted price
+                const priceWithTax = calculatePriceWithTax(basePrice);
+                const discountValue = parseFloat(discount.replace('%', '')) / 100;
+                const discountedPrice = priceWithTax * (1 - discountValue);
+                
+                productsData.push({
+                  barcode: String(rowValues[1] || '').trim(),
+                  itemName: String(rowValues[2] || '').trim(),
+                  price: priceWithTax,
+                  dateReceived: dateReceived,
+                  color: String(rowValues[5] || '').trim(),
+                  quantity: String(rowValues[6] || '').trim(),
+                  priceAfterDiscount: discountedPrice.toFixed(2),
+                  tax: discount
+                });
+              }
+            });
+            // حفظ البيانات في التخزين المحلي
+            localStorage.setItem('excelData', JSON.stringify(productsData));
+            alert('تم تحميل الملف بنجاح');
+          };
+          reader.readAsArrayBuffer(file);
+        } catch (error) {
+          alert('حدث خطأ في قراءة الملف');
+          console.error(error);
+        }
+      }
+    });
+
+    function displayResults(results) {
+      resultBody.innerHTML = '';
+      if (results.length > 0) {
+        results.forEach(product => {
+          const row = document.createElement('tr');
+          row.innerHTML = `
+            <td>${product.itemName}</td>
+            <td>${product.price}</td>
+            <td>${product.dateReceived}</td>
+            <td>${product.color}</td>
+            <td>${product.quantity}</td>
+            <td>${product.priceAfterDiscount}</td>
+            <td>${product.tax}</td>
+          `;
+          resultBody.appendChild(row);
+        });
+        resultTable.style.display = 'table';
+      } else {
+        resultTable.style.display = 'none';
+      }
+    }
+
+    function searchProducts(query) {
+      if (!query) {
+        resultTable.style.display = 'none';
+        return;
+      }
+      query = query.toLowerCase();
+      const results = productsData.filter(product => 
+        Object.values(product).some(value => 
+          value.toLowerCase().includes(query)
+        )
+      );
+      displayResults(results);
+    }
+
+    searchInput.addEventListener('input', (e) => searchProducts(e.target.value));
+  </script>
+</body>
+</html>
