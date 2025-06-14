@@ -89,7 +89,6 @@
     </div>
     <!-- مكان عرض قارئ الباركود -->
     <div id="reader" style="width: 100%; max-width: 400px; margin: auto;"></div>
-    <p style="text-align: center; color: #666;">Please allow camera access to scan the barcode smoothly.</p>
     <!-- عرض النتيجة -->
     <p id="barcode-result" style="text-align: center; font-weight: bold;"></p>
 
@@ -158,7 +157,7 @@
     let productsData = [];
     const fileInput = document.getElementById('excelFile');
     const searchInput = document.getElementById('searchInput');
-<<<<<<< HEAD
+    const barcodeInput = document.getElementById('barcodeInput');
 =======
     const barcodeInput = document.getElementById('barcodeInput');
 >>>>>>> 6253ce7f48c381f3d96d705174cad5b8ed8b829a
@@ -252,10 +251,11 @@
         results.forEach(product => {
           const row = document.createElement('tr');
           row.innerHTML = `
-<<<<<<< HEAD
-=======
+// Remove all lines containing:
+// <<<<<<< HEAD
+// =======
+// >>>>>>> 6253ce7f48c381f3d96d705174cad5b8ed8b829a
             <td>${product.barcode}</td>
->>>>>>> 6253ce7f48c381f3d96d705174cad5b8ed8b829a
             <td>${product.itemName}</td>
             <td>${product.price}</td>
             <td>${product.dateReceived}</td>
