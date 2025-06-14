@@ -1,11 +1,10 @@
-const CACHE_NAME = 'barcode-scanner-v1';
+const CACHE_NAME = 'excel-reader-v2';
 const urlsToCache = [
   '/',
   '/index.html',
   '/manifest.webmanifest',
-  'https://cdn.jsdelivr.net/npm/exceljs/dist/exceljs.min.js',
-  'https://unpkg.com/html5-qrcode',
-  'https://cdn.jsdelivr.net/npm/sweetalert2@11'
+  'https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.3.0/exceljs.min.js',
+  'https://fonts.googleapis.com/css2?family=Cairo:wght@400;700&family=Poppins:wght@400;700&display=swap'
 ];
 
 self.addEventListener('install', event => {
