@@ -404,17 +404,128 @@
     });
 
     // تحميل البيانات تلقائياً عند فتح الموقع
-    window.addEventListener('DOMContentLoaded', loadExcelOnce);
+    window.addEventListener('DOMContentLoaded', () => {
+      loadExcelFromGitHub();
+    });
 
-    // وظيفة تحميل البيانات مرة واحدة
-    async function loadExcelOnce() {
+    // وظيفة تحميل ملف Excel من GitHub
+    async function loadExcelFromGitHub() {
       if (isDataLoaded) return;
       
-      const fileInput = document.getElementById('excelFile');
-      if (fileInput.files.length > 0) {
-        await processExcelFile(fileInput.files[0]);
-      } else {
-        loadSavedData();
+      const excelUrl = 'https://github.com/adfsgtdfshg/barcode-Salah/raw/main/barcode_ready.xlsx';
+      
+      try {
+        // عرض رسالة تحميل
+        const loadingMessage = document.createElement('div');
+        loadingMessage.id = 'loading-message';
+        loadingMessage.style.padding = '15px';
+        loadingMessage.style.backgroundColor = '#009688';
+        loadingMessage.style.color = 'white';
+        loadingMessage.style.borderRadius = '4px';
+        loadingMessage.style.marginBottom = '20px';
+        loadingMessage.style.textAlign = 'center';
+        loadingMessage.innerHTML = 'جاري تحميل البيانات من GitHub...';
+        
+        document.querySelector('.container').insertBefore(loadingMessage, document.querySelector('.input-group'));
+        
+        // محاولة تحميل البيانات المحفوظة أولاً
+        if (storageAvailable('sessionStorage')) {
+          const savedData = sessionStorage.getItem('excelData');
+          const fileName = sessionStorage.getItem('fileName');
+          if (savedData && fileName) {
+            productsData = JSON.parse(savedData);
+            updateFileInfo(fileName, productsData.length);
+            loadingMessage.innerHTML = `تم استرجاع ${productsData.length} منتج من التخزين المحلي`;
+            setTimeout(() => {
+              loadingMessage.style.display = 'none';
+            }, 3000);
+            isDataLoaded = true;
+            return;
+          }
+        }
+        
+        // تحميل الملف من GitHub
+        const response = await fetch(excelUrl);
+        if (!response.ok) {
+          throw new Error(`فشل تحميل الملف: ${response.status} ${response.statusText}`);
+        }
+        
+        const arrayBuffer = await response.arrayBuffer();
+        const workbook = new ExcelJS.Workbook();
+        await workbook.xlsx.load(arrayBuffer);
+        
+        const worksheet = workbook.worksheets[0];
+        productsData = [];
+        
+        worksheet.eachRow({ includeEmpty: false }, function(row, rowNumber) {
+          if (rowNumber > 1) {
+            const rowValues = row.values;
+            const basePrice = String(rowValues[3] || '').trim();
+            let dateReceived = String(rowValues[4] || '').trim();
+            let year = 0;
+            
+            if (dateReceived && !isNaN(new Date(dateReceived))) {
+              const dateObj = new Date(dateReceived);
+              if (!isNaN(dateObj)) {
+                year = dateObj.getFullYear();
+                dateReceived = dateObj.toISOString().split('T')[0];
+              } else {
+                dateReceived = '';
+              }
+            } else {
+              dateReceived = '';
+            }
+
+            let discount = '0%';
+            if (year >= 2024) {
+              discount = '20%';
+            } else if (year === 2023) {
+              discount = '30%';
+            } else if (year <= 2022 && year > 0) {
+              discount = '50%';
+            }
+
+            const priceWithTax = calculatePriceWithTax(basePrice);
+            const discountValue = parseFloat(discount.replace('%', '')) / 100;
+            const discountedPrice = priceWithTax * (1 - discountValue);
+            
+            productsData.push({
+              itemName: String(rowValues[2] || '').trim(),
+              price: priceWithTax,
+              dateReceived: dateReceived,
+              color: String(rowValues[5] || '').trim(),
+              quantity: String(rowValues[6] || '').trim(),
+              priceAfterDiscount: discountedPrice.toFixed(2),
+              tax: discount
+            });
+          }
+        });
+        
+        // حفظ البيانات في التخزين المحلي
+        if (storageAvailable('sessionStorage')) {
+          try {
+            sessionStorage.setItem('excelData', JSON.stringify(productsData));
+            sessionStorage.setItem('fileName', 'barcode_ready.xlsx');
+            sessionStorage.setItem('saveDate', new Date().toISOString());
+          } catch (e) {
+            console.error('خطأ في حفظ البيانات في التخزين المحلي:', e);
+          }
+        }
+        
+        updateFileInfo('barcode_ready.xlsx', productsData.length);
+        loadingMessage.innerHTML = `تم تحميل ${productsData.length} منتج من GitHub بنجاح`;
+        setTimeout(() => {
+          loadingMessage.style.display = 'none';
+        }, 3000);
+        isDataLoaded = true;
+        
+      } catch (error) {
+        console.error('حدث خطأ أثناء تحميل ملف Excel من GitHub:', error);
+        const loadingMessage = document.getElementById('loading-message');
+        if (loadingMessage) {
+          loadingMessage.innerHTML = `فشل تحميل البيانات: ${error.message}`;
+          loadingMessage.style.backgroundColor = '#f44336';
+        }
       }
     }
   </script>
