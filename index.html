@@ -222,7 +222,7 @@
     }
 
     // البحث في المنتجات
-    // تحسين وظيفة البحث
+    let searchTimeout;
     function searchProducts(query) {
       if (!query) {
         resultTable.style.display = 'none';
@@ -231,17 +231,20 @@
       query = query.toLowerCase().trim();
       
       const results = productsData.filter(product => {
-        const itemName = String(product.itemName).toLowerCase();
-        const color = String(product.color).toLowerCase();
-        const quantity = String(product.quantity).toLowerCase();
-        const price = String(product.price).toLowerCase();
+        if (!product) return false;
+        
+        const itemName = String(product.itemName || '').toLowerCase();
+        const color = String(product.color || '').toLowerCase();
+        const quantity = String(product.quantity || '').toLowerCase();
+        const price = String(product.price || '').toLowerCase();
+        const dateReceived = String(product.dateReceived || '');
         
         // البحث الدقيق في كل حقل
         return itemName.includes(query) ||
                color.includes(query) ||
                quantity === query ||
                price === query ||
-               product.dateReceived.includes(query);
+               dateReceived.includes(query);
       });
       
       displayResults(results);
@@ -255,21 +258,32 @@
     // إضافة مستمع حدث للزر البحث
     document.getElementById('searchButton').addEventListener('click', () => {
       const query = searchInput.value;
-      searchProducts(query);
+      if (query.trim()) {
+        searchProducts(query);
+      }
     });
 
-    // تعديل مستمع حدث البحث الفوري
+    // تعديل مستمع حدث البحث الفوري مع تأخير زمني
     searchInput.addEventListener('input', (e) => {
-      if (e.target.value.length >= 3) {
-        searchProducts(e.target.value);
-      } else if (e.target.value.length === 0) {
+      clearTimeout(searchTimeout);
+      const query = e.target.value;
+      
+      if (query.length === 0) {
         resultTable.style.display = 'none';
+        return;
+      }
+      
+      if (query.length >= 2) {
+        searchTimeout = setTimeout(() => {
+          searchProducts(query);
+        }, 300);
       }
     });
 
     // إضافة مستمع حدث للبحث عند الضغط على Enter
     searchInput.addEventListener('keypress', (e) => {
-      if (e.key === 'Enter') {
+      if (e.key === 'Enter' && e.target.value.trim()) {
+        clearTimeout(searchTimeout);
         searchProducts(e.target.value);
       }
     });
@@ -341,8 +355,6 @@
         }
       }
     });
-
-    searchInput.addEventListener('input', (e) => searchProducts(e.target.value));
   </script>
 </body>
 </html>
