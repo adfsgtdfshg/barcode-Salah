@@ -104,7 +104,10 @@
 
     <div class="input-group">
       <label for="searchInput">بحث في كامل الملف:</label>
-      <input type="text" id="searchInput" placeholder="ادخل نص للبحث...">
+      <div style="display: flex; gap: 10px;">
+        <input type="text" id="searchInput" placeholder="ادخل نص للبحث..." style="flex: 1;">
+        <button id="searchButton" style="padding: 10px 20px; background-color: #009688; color: white; border: none; border-radius: 4px; cursor: pointer;">بحث</button>
+      </div>
     </div>
 
     <table id="resultTable">
@@ -219,19 +222,57 @@
     }
 
     // البحث في المنتجات
+    // تحسين وظيفة البحث
     function searchProducts(query) {
       if (!query) {
         resultTable.style.display = 'none';
         return;
       }
-      query = query.toLowerCase();
-      const results = productsData.filter(product => 
-        Object.values(product).some(value => 
-          String(value).toLowerCase().includes(query)
-        )
-      );
+      query = query.toLowerCase().trim();
+      
+      const results = productsData.filter(product => {
+        const itemName = String(product.itemName).toLowerCase();
+        const color = String(product.color).toLowerCase();
+        const quantity = String(product.quantity).toLowerCase();
+        const price = String(product.price).toLowerCase();
+        
+        // البحث الدقيق في كل حقل
+        return itemName.includes(query) ||
+               color.includes(query) ||
+               quantity === query ||
+               price === query ||
+               product.dateReceived.includes(query);
+      });
+      
       displayResults(results);
+      
+      // إظهار رسالة إذا لم يتم العثور على نتائج
+      if (results.length === 0) {
+        alert('لم يتم العثور على نتائج للبحث');
+      }
     }
+
+    // إضافة مستمع حدث للزر البحث
+    document.getElementById('searchButton').addEventListener('click', () => {
+      const query = searchInput.value;
+      searchProducts(query);
+    });
+
+    // تعديل مستمع حدث البحث الفوري
+    searchInput.addEventListener('input', (e) => {
+      if (e.target.value.length >= 3) {
+        searchProducts(e.target.value);
+      } else if (e.target.value.length === 0) {
+        resultTable.style.display = 'none';
+      }
+    });
+
+    // إضافة مستمع حدث للبحث عند الضغط على Enter
+    searchInput.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') {
+        searchProducts(e.target.value);
+      }
+    });
 
     // استرجاع البيانات عند تحميل الصفحة
     window.addEventListener('load', loadSavedData);
