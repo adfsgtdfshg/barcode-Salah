@@ -1,4 +1,24 @@
 {
+  "name": "قارئ باركود من Excel",
+  "short_name": "قارئ باركود",
+  "description": "تطبيق لقراءة وعرض بيانات الباركود من ملفات Excel",
+  "start_url": "/index.html",
+  "display": "standalone",
+  "background_color": "#333",
+  "theme_color": "#009688",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "icons/icon.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "related_applications": [],
+  "prefer_related_applications": false
+}
+{
   "name": "قارئ ملفات Excel",
   "short_name": "ExcelReader",
   "description": "تطبيق لقراءة وعرض بيانات ملفات Excel مع حساب الخصومات والأسعار",
