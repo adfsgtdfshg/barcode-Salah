@@ -100,6 +100,58 @@
         font-size: 0.9rem;
       }
     }
+
+    /* أنماط الطباعة */
+    @media print {
+      body {
+        background-color: white;
+        color: black;
+        padding: 0;
+        margin: 0;
+      }
+
+      .container {
+        background-color: white;
+        box-shadow: none;
+        max-width: 100%;
+        padding: 0;
+      }
+
+      .input-group,
+      .action-buttons,
+      footer {
+        display: none !important;
+      }
+
+      table {
+        display: table !important;
+        width: 100%;
+        border: 1px solid #000;
+        background-color: white;
+      }
+
+      th {
+        background-color: #f0f0f0 !important;
+        color: black;
+        border: 1px solid #000;
+      }
+
+      td {
+        border: 1px solid #000;
+        color: black;
+      }
+
+      tr:nth-child(even) {
+        background-color: #f9f9f9 !important;
+      }
+
+      #resultBox {
+        border: 1px solid #000;
+        background-color: white !important;
+        color: black;
+        margin: 20px 0;
+      }
+    }
   </style>
 </head>
 <body>
@@ -128,6 +180,15 @@
     </div>
 
     <div id="resultBox" style="margin-top: 20px; padding: 15px; background-color: #555; border-radius: 4px; display: none;"></div>
+
+    <div class="action-buttons" style="margin: 20px 0; display: flex; gap: 10px; justify-content: flex-end;">
+      <button id="shareButton" style="padding: 10px 20px; background-color: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer; display: none;">
+        <span style="margin-left: 5px;">مشاركة النتائج</span>
+      </button>
+      <button id="printButton" style="padding: 10px 20px; background-color: #2196F3; color: white; border: none; border-radius: 4px; cursor: pointer; display: none;">
+        <span style="margin-left: 5px;">طباعة النتائج</span>
+      </button>
+    </div>
 
     <table id="resultTable">
       <thead>
@@ -293,6 +354,28 @@
       }
     });
 
+    // تحميل الملف من Google Drive
+    async function loadExcelFromDrive() {
+      const driveFileId = '1234567890'; // استبدل برقم ملف Google Drive الخاص بك
+      const driveFileUrl = `https://drive.google.com/uc?export=download&id=${driveFileId}`;
+      
+      try {
+        const response = await fetch(driveFileUrl);
+        if (!response.ok) {
+          throw new Error(`فشل تحميل الملف: ${response.status} ${response.statusText}`);
+        }
+        const blob = await response.blob();
+        const file = new File([blob], 'excel_file.xlsx', { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        await processExcelFile(file);
+      } catch (error) {
+        alert(`حدث خطأ أثناء تحميل الملف: ${error.message}`);
+        console.error('خطأ في تحميل الملف من Google Drive:', error);
+      }
+    }
+
+    // إضافة مستمع حدث لزر تحميل Google Drive
+    document.getElementById('loadFromDrive').addEventListener('click', loadExcelFromDrive);
+
     // حساب السعر مع الضريبة
     function calculatePriceWithTax(price) {
       if (!price || isNaN(price)) return '0';
@@ -393,11 +476,78 @@
       const query = e.target.value.trim();
       if (query.length === 0) {
         document.getElementById('resultBox').style.display = 'none';
+        hideActionButtons();
       } else if (query.length >= 2) {
         document.getElementById('resultBox').style.display = 'block';
         search();
+        showActionButtons();
       }
     });
+
+    // إخفاء أزرار المشاركة والطباعة
+    function hideActionButtons() {
+      document.getElementById('shareButton').style.display = 'none';
+      document.getElementById('printButton').style.display = 'none';
+    }
+
+    // إظهار أزرار المشاركة والطباعة
+    function showActionButtons() {
+      document.getElementById('shareButton').style.display = 'block';
+      document.getElementById('printButton').style.display = 'block';
+    }
+
+    // مشاركة النتائج
+    async function shareResults() {
+      if (!productsData.length) {
+        alert('لا توجد نتائج للمشاركة');
+        return;
+      }
+
+      const searchQuery = document.getElementById('searchInput').value.trim();
+      const results = productsData.filter(product => {
+        const itemName = String(product.itemName || '').toLowerCase();
+        return itemName.includes(searchQuery.toLowerCase());
+      });
+
+      if (!results.length) {
+        alert('لا توجد نتائج للمشاركة');
+        return;
+      }
+
+      const shareText = `نتائج البحث عن: ${searchQuery}\n\n` +
+        results.map(product => (
+          `المنتج: ${product.itemName}\n` +
+          `السعر: ${product.price}\n` +
+          `السعر بعد الخصم: ${product.priceAfterDiscount}\n` +
+          `الكمية: ${product.quantity}\n`
+        )).join('\n');
+
+      try {
+        await navigator.share({
+          title: 'نتائج البحث',
+          text: shareText
+        });
+      } catch (error) {
+        if (error.name !== 'AbortError') {
+          alert('فشلت عملية المشاركة: ' + error.message);
+        }
+      }
+    }
+
+    // طباعة النتائج
+    function printResults() {
+      if (!productsData.length) {
+        alert('لا توجد نتائج للطباعة');
+        return;
+      }
+
+      const searchQuery = document.getElementById('searchInput').value.trim();
+      window.print();
+    }
+
+    // إضافة مستمعي أحداث لأزرار المشاركة والطباعة
+    document.getElementById('shareButton').addEventListener('click', shareResults);
+    document.getElementById('printButton').addEventListener('click', printResults);
     
     // مستمع حدث للبحث عند الضغط على Enter
     searchInput.addEventListener('keypress', (e) => {
