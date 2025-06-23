@@ -261,85 +261,169 @@
       }
     };
 
-    // استرجاع البيانات
-    const loadSavedData = () => {
-      if (isDataLoaded) return; // تجنب إعادة تحميل البيانات
+    // استرجاع البيانات المحفوظة
+    async function loadSavedData() {
+      if (isDataLoaded) {
+        console.log('البيانات محملة بالفعل');
+        return true;
+      }
 
-      if (storageAvailable('sessionStorage')) {
+      if (!storageAvailable('sessionStorage')) {
+        console.warn('التخزين المحلي غير متاح');
+        return false;
+      }
+
+      try {
         const savedData = sessionStorage.getItem('excelData');
         const fileName = sessionStorage.getItem('fileName');
-        if (savedData && fileName) {
-          productsData = JSON.parse(savedData);
-          updateFileInfo(fileName, productsData.length);
-          alert(`تم استرجاع ${productsData.length} منتج من التخزين المحلي`);
-          isDataLoaded = true;
+        const saveDate = sessionStorage.getItem('saveDate');
+
+        if (!savedData || !fileName) {
+          console.log('لا توجد بيانات محفوظة');
+          return false;
         }
+
+        const parsedData = JSON.parse(savedData);
+        if (!Array.isArray(parsedData) || parsedData.length === 0) {
+          console.warn('البيانات المحفوظة غير صالحة');
+          sessionStorage.removeItem('excelData');
+          sessionStorage.removeItem('fileName');
+          sessionStorage.removeItem('saveDate');
+          return false;
+        }
+
+        productsData = parsedData;
+        updateFileInfo(fileName, productsData.length);
+
+        const loadingMessage = document.createElement('div');
+        loadingMessage.id = 'loading-message';
+        loadingMessage.style.padding = '15px';
+        loadingMessage.style.backgroundColor = '#4CAF50';
+        loadingMessage.style.color = 'white';
+        loadingMessage.style.borderRadius = '4px';
+        loadingMessage.style.marginBottom = '20px';
+        loadingMessage.style.textAlign = 'center';
+
+        const savedDate = saveDate ? new Date(saveDate).toLocaleString('ar-SA') : 'غير معروف';
+        loadingMessage.innerHTML = `تم استرجاع ${productsData.length} منتج من التخزين المحلي<br>آخر تحديث: ${savedDate}`;
+
+        document.querySelector('.container').insertBefore(loadingMessage, document.querySelector('.input-group'));
+        setTimeout(() => {
+          loadingMessage.style.opacity = '0';
+          loadingMessage.style.transition = 'opacity 0.5s';
+          setTimeout(() => loadingMessage.remove(), 500);
+        }, 3000);
+
+        isDataLoaded = true;
+        return true;
+      } catch (error) {
+        console.error('خطأ في تحميل البيانات المحفوظة:', error);
+        sessionStorage.removeItem('excelData');
+        sessionStorage.removeItem('fileName');
+        sessionStorage.removeItem('saveDate');
+        return false;
       }
-    };
+    }
 
     // معالجة تحميل ملف Excel
     const processExcelFile = async (file) => {
-      if (!file) return;
+      if (!file) {
+        throw new Error('لم يتم اختيار ملف');
+      }
+
+      if (!file.name.endsWith('.xlsx')) {
+        throw new Error('يجب أن يكون الملف بصيغة Excel (.xlsx)');
+      }
       
       const workbook = new ExcelJS.Workbook();
       try {
-        const reader = new FileReader();
-        reader.onload = async function(e) {
-          const buffer = e.target.result;
-          await workbook.xlsx.load(buffer);
-          const worksheet = workbook.worksheets[0];
-          productsData = [];
-          
-          worksheet.eachRow({ includeEmpty: false }, function(row, rowNumber) {
-            if (rowNumber > 1) {
+        const buffer = await file.arrayBuffer();
+        await workbook.xlsx.load(buffer);
+        
+        if (workbook.worksheets.length === 0) {
+          throw new Error('الملف لا يحتوي على أي ورقة عمل');
+        }
+
+        const worksheet = workbook.worksheets[0];
+        if (worksheet.rowCount <= 1) {
+          throw new Error('الملف لا يحتوي على بيانات');
+        }
+
+        productsData = [];
+        let errorRows = [];
+        
+        worksheet.eachRow({ includeEmpty: false }, function(row, rowNumber) {
+          if (rowNumber > 1) {
+            try {
               const rowValues = row.values;
               const basePrice = String(rowValues[3] || '').trim();
               let dateReceived = String(rowValues[4] || '').trim();
               let year = 0;
               
-              if (dateReceived && !isNaN(new Date(dateReceived))) {
+              // التحقق من صحة التاريخ
+              if (dateReceived) {
                 const dateObj = new Date(dateReceived);
                 if (!isNaN(dateObj)) {
                   year = dateObj.getFullYear();
                   dateReceived = dateObj.toISOString().split('T')[0];
-                } else {
-                  dateReceived = '';
                 }
-              } else {
-                dateReceived = '';
               }
 
+              // حساب الخصم بناءً على السنة
               let discount = '0%';
-              if (year >= 2024) {
+              const currentYear = new Date().getFullYear();
+              if (year >= currentYear) {
                 discount = '20%';
-              } else if (year === 2023) {
+              } else if (year === currentYear - 1) {
                 discount = '30%';
-              } else if (year <= 2022 && year > 0) {
+              } else if (year <= currentYear - 2 && year > 0) {
                 discount = '50%';
               }
 
+              // التحقق من صحة السعر وحساب السعر النهائي
               const priceWithTax = calculatePriceWithTax(basePrice);
-              const discountValue = parseFloat(discount.replace('%', '')) / 100;
+              if (isNaN(priceWithTax)) {
+                throw new Error(`سعر غير صالح في الصف ${rowNumber}`);
+              }
+
+              const discountValue = parseFloat(discount) / 100;
               const discountedPrice = priceWithTax * (1 - discountValue);
               
+              // التحقق من البيانات الإلزامية
+              const itemName = String(rowValues[2] || '').trim();
+              if (!itemName) {
+                throw new Error(`اسم المنتج مفقود في الصف ${rowNumber}`);
+              }
+
               productsData.push({
-                itemName: String(rowValues[2] || '').trim(),
+                itemName: itemName,
                 price: priceWithTax,
                 dateReceived: dateReceived,
                 color: String(rowValues[5] || '').trim(),
-                quantity: String(rowValues[6] || '').trim(),
+                quantity: String(rowValues[6] || '0').trim(),
                 priceAfterDiscount: discountedPrice.toFixed(2),
                 tax: discount
               });
+            } catch (rowError) {
+              errorRows.push({ row: rowNumber, error: rowError.message });
             }
-          });
-          saveData(productsData, file.name);
-        };
-        reader.readAsArrayBuffer(file);
+          }
+        });
+
+        if (productsData.length === 0) {
+          throw new Error('لم يتم العثور على بيانات صالحة في الملف');
+        }
+
+        // حفظ البيانات وعرض التقرير
+        saveData(productsData, file.name);
+        
+        if (errorRows.length > 0) {
+          console.warn('أخطاء في بعض الصفوف:', errorRows);
+          alert(`تم تحميل ${productsData.length} منتج بنجاح، مع وجود ${errorRows.length} أخطاء. راجع وحدة التحكم للتفاصيل.`);
+        }
       } catch (error) {
-        alert('حدث خطأ في قراءة الملف');
-        console.error(error);
-        isDataLoaded = false;
+        console.error('خطأ في معالجة الملف:', error);
+        throw new Error(`فشل في معالجة الملف: ${error.message}`);
       }
     };
 
@@ -356,6 +440,30 @@
 
     // تحميل الملف من Google Drive
     async function loadExcelFromDrive() {
+      if (!navigator.onLine) {
+        alert('لا يوجد اتصال بالإنترنت. يرجى التحقق من اتصالك والمحاولة مرة أخرى.');
+        return;
+      }
+
+      if (isDataLoaded) {
+        const confirmReload = confirm('هل تريد تحميل ملف جديد؟ سيتم استبدال البيانات الحالية.');
+        if (!confirmReload) {
+          return;
+        }
+      }
+
+      const loadingMessage = document.createElement('div');
+      loadingMessage.id = 'loading-message';
+      loadingMessage.style.padding = '15px';
+      loadingMessage.style.backgroundColor = '#009688';
+      loadingMessage.style.color = 'white';
+      loadingMessage.style.borderRadius = '4px';
+      loadingMessage.style.marginBottom = '20px';
+      loadingMessage.style.textAlign = 'center';
+      loadingMessage.innerHTML = 'جاري تحميل البيانات من Google Drive...';
+      
+      document.querySelector('.container').insertBefore(loadingMessage, document.querySelector('.input-group'));
+
       const driveFileId = '1234567890'; // استبدل برقم ملف Google Drive الخاص بك
       const driveFileUrl = `https://drive.google.com/uc?export=download&id=${driveFileId}`;
       
@@ -364,12 +472,32 @@
         if (!response.ok) {
           throw new Error(`فشل تحميل الملف: ${response.status} ${response.statusText}`);
         }
+
+        const contentType = response.headers.get('content-type');
+        if (!contentType || !contentType.includes('spreadsheet')) {
+          throw new Error('نوع الملف غير صحيح. يرجى التأكد من أن الملف هو ملف Excel.');
+        }
+
         const blob = await response.blob();
+        if (blob.size === 0) {
+          throw new Error('الملف فارغ');
+        }
+
         const file = new File([blob], 'excel_file.xlsx', { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
         await processExcelFile(file);
+        
+        loadingMessage.innerHTML = 'تم تحميل الملف بنجاح!';
+        setTimeout(() => {
+          loadingMessage.remove();
+        }, 3000);
       } catch (error) {
-        alert(`حدث خطأ أثناء تحميل الملف: ${error.message}`);
+        loadingMessage.style.backgroundColor = '#f44336';
+        loadingMessage.innerHTML = `حدث خطأ أثناء تحميل الملف: ${error.message}`;
         console.error('خطأ في تحميل الملف من Google Drive:', error);
+        
+        setTimeout(() => {
+          loadingMessage.remove();
+        }, 5000);
       }
     }
 
@@ -386,18 +514,83 @@
     // عرض النتائج في الجدول
     function displayResults(results) {
       resultBody.innerHTML = '';
-      if (results.length > 0) {
-        results.forEach(product => {
-          const row = document.createElement('tr');
-          row.innerHTML = `
-            <td>${product.itemName}</td>
-            <td>${product.price}</td>
-            <td>${product.dateReceived}</td>
-            <td>${product.color}</td>
-            <td>${product.quantity}</td>
-            <td>${product.priceAfterDiscount}</td>
-            <td>${product.tax}</td>
+      
+      if (!Array.isArray(results) || results.length === 0) {
+        resultTable.style.display = 'none';
+        const noResults = document.createElement('div');
+        noResults.className = 'alert alert-info';
+        noResults.style.marginTop = '20px';
+        noResults.style.textAlign = 'center';
+        noResults.textContent = 'لا توجد نتائج للبحث';
+        resultTable.parentNode.insertBefore(noResults, resultTable);
+        return;
+      }
+
+      resultTable.style.display = 'table';
+      const noResultsMsg = document.querySelector('.alert.alert-info');
+      if (noResultsMsg) noResultsMsg.remove();
+
+      results.forEach(product => {
+        const row = document.createElement('tr');
+        
+        // تحديد لون الصف بناءً على نسبة الخصم
+        const discountPercentage = parseInt(product.tax);
+        if (discountPercentage >= 30) {
+          row.style.backgroundColor = '#ff9800';
+          row.style.color = 'white';
+        }
+
+        // تنسيق التاريخ
+        let formattedDate = product.dateReceived;
+        if (formattedDate) {
+          try {
+            const dateObj = new Date(product.dateReceived);
+            if (!isNaN(dateObj)) {
+              formattedDate = dateObj.toLocaleDateString('ar-SA', {
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric'
+              });
+            }
+          } catch (e) {
+            console.warn('خطأ في تنسيق التاريخ:', e);
+            formattedDate = '-';
+          }
+        } else {
+          formattedDate = '-';
+        }
+
+        // تنسيق السعر والكمية
+        const priceOptions = {
+          style: 'currency',
+          currency: 'SAR',
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2
+        };
+
+        const formattedPrice = parseFloat(product.price || 0).toLocaleString('ar-SA', priceOptions);
+        const formattedDiscountPrice = parseFloat(product.priceAfterDiscount || 0).toLocaleString('ar-SA', priceOptions);
+        const formattedQuantity = parseFloat(product.quantity || 0).toLocaleString('ar-SA');
+
+        // تنظيف وتنسيق البيانات
+        const itemName = (product.itemName || '-').trim();
+        const color = (product.color || '-').trim();
+
+        row.innerHTML = `
+          <td><strong>${itemName}</strong></td>
+          <td>${formattedPrice}</td>
+          <td>${formattedDate}</td>
+          <td>${color}</td>
+            <td>${formattedQuantity}</td>
+            <td>${formattedDiscountPrice}</td>
+            <td>${product.tax || '0%'}</td>
           `;
+
+          // إضافة تأثير بصري للصفوف التي تحتوي على خصم كبير
+          if (product.tax && parseInt(product.tax) >= 30) {
+            row.style.backgroundColor = '#4a4a4a';
+            row.style.color = '#fff';
+          }
           resultBody.appendChild(row);
         });
         resultTable.style.display = 'table';
@@ -409,34 +602,66 @@
     // البحث في المنتجات
     let searchTimeout;
     function searchProducts(query) {
-      if (!query) {
+      if (!query || !productsData || !Array.isArray(productsData)) {
         resultTable.style.display = 'none';
         return;
       }
+
+      // تنظيف وتحضير البحث
       query = query.toLowerCase().trim();
-      
+      if (query.length < 2) {
+        resultTable.style.display = 'none';
+        return;
+      }
+
+      // تحويل الأرقام العربية إلى إنجليزية
+      const arabicToEnglish = (str) => {
+        return str.replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d));
+      };
+
+      query = arabicToEnglish(query);
+
       const results = productsData.filter(product => {
         if (!product) return false;
-        
-        const itemName = String(product.itemName || '').toLowerCase();
-        const color = String(product.color || '').toLowerCase();
-        const quantity = String(product.quantity || '').toLowerCase();
-        const price = String(product.price || '').toLowerCase();
-        const dateReceived = String(product.dateReceived || '');
-        
-        // البحث الدقيق في كل حقل
-        return itemName.includes(query) ||
-               color.includes(query) ||
-               quantity === query ||
-               price === query ||
-               dateReceived.includes(query);
+
+        try {
+          // تحضير حقول البحث
+          const searchFields = {
+            itemName: String(product.itemName || '').toLowerCase(),
+            color: String(product.color || '').toLowerCase(),
+            quantity: String(product.quantity || ''),
+            price: String(product.price || ''),
+            priceAfterDiscount: String(product.priceAfterDiscount || ''),
+            dateReceived: product.dateReceived ? new Date(product.dateReceived).toLocaleDateString('ar-SA') : ''
+          };
+
+          // تحويل الأرقام العربية في حقول البحث
+          Object.keys(searchFields).forEach(key => {
+            searchFields[key] = arabicToEnglish(searchFields[key].toLowerCase());
+          });
+
+          // البحث في جميع الحقول
+          return Object.values(searchFields).some(value => value.includes(query));
+        } catch (error) {
+          console.warn('خطأ في معالجة منتج أثناء البحث:', error);
+          return false;
+        }
       });
-      
+
       displayResults(results);
-      
-      // إظهار رسالة إذا لم يتم العثور على نتائج
+
+      // تحديث واجهة المستخدم بناءً على النتائج
+      const resultBox = document.getElementById('resultBox');
       if (results.length === 0) {
-        alert('لم يتم العثور على نتائج للبحث');
+        resultBox.innerHTML = 'لم يتم العثور على نتائج للبحث';
+        resultBox.style.display = 'block';
+        resultBox.style.color = '#721c24';
+        resultBox.style.backgroundColor = '#f8d7da';
+        resultBox.style.padding = '10px';
+        resultBox.style.borderRadius = '4px';
+        resultBox.style.marginTop = '10px';
+      } else {
+        resultBox.style.display = 'none';
       }
     }
 
@@ -498,15 +723,40 @@
 
     // مشاركة النتائج
     async function shareResults() {
-      if (!productsData.length) {
-        alert('لا توجد نتائج للمشاركة');
+      if (!productsData || !Array.isArray(productsData) || productsData.length === 0) {
+        alert('لا توجد بيانات متاحة للمشاركة');
         return;
       }
 
       const searchQuery = document.getElementById('searchInput').value.trim();
+      if (!searchQuery || searchQuery.length < 2) {
+        alert('الرجاء إدخال كلمة بحث صحيحة');
+        return;
+      }
+
+      // البحث عن النتائج باستخدام وظيفة البحث الحالية
       const results = productsData.filter(product => {
-        const itemName = String(product.itemName || '').toLowerCase();
-        return itemName.includes(searchQuery.toLowerCase());
+        if (!product) return false;
+        
+        try {
+          // تحضير حقول البحث
+          const searchFields = {
+            itemName: String(product.itemName || '').toLowerCase(),
+            color: String(product.color || '').toLowerCase(),
+            quantity: String(product.quantity || ''),
+            price: String(product.price || ''),
+            priceAfterDiscount: String(product.priceAfterDiscount || ''),
+            dateReceived: product.dateReceived ? new Date(product.dateReceived).toLocaleDateString('ar-SA') : ''
+          };
+
+          // البحث في جميع الحقول
+          return Object.values(searchFields).some(value => 
+            value.toLowerCase().includes(searchQuery.toLowerCase())
+          );
+        } catch (error) {
+          console.warn('خطأ في معالجة منتج أثناء البحث:', error);
+          return false;
+        }
       });
 
       if (!results.length) {
@@ -514,36 +764,253 @@
         return;
       }
 
-      const shareText = `نتائج البحث عن: ${searchQuery}\n\n` +
-        results.map(product => (
-          `المنتج: ${product.itemName}\n` +
-          `السعر: ${product.price}\n` +
-          `السعر بعد الخصم: ${product.priceAfterDiscount}\n` +
-          `الكمية: ${product.quantity}\n`
-        )).join('\n');
+      // تحضير نص المشاركة
+      const currentDate = new Date().toLocaleDateString('ar-SA');
+      let shareText = `نتائج البحث - ${currentDate}\n`;
+      shareText += `كلمة البحث: ${searchQuery}\n`;
+      shareText += `عدد النتائج: ${results.length}\n\n`;
+
+      results.forEach((product, index) => {
+        const formattedPrice = parseFloat(product.price || 0).toLocaleString('ar-SA', {
+          style: 'currency',
+          currency: 'SAR'
+        });
+        const formattedDiscountPrice = parseFloat(product.priceAfterDiscount || 0).toLocaleString('ar-SA', {
+          style: 'currency',
+          currency: 'SAR'
+        });
+
+        shareText += `${index + 1}. ${product.itemName}\n`;
+        shareText += `   السعر: ${formattedPrice}\n`;
+        shareText += `   السعر بعد الخصم: ${formattedDiscountPrice}\n`;
+        shareText += `   اللون: ${product.color || '-'}\n`;
+        shareText += `   الكمية: ${product.quantity || '0'}\n`;
+        shareText += `   نسبة الخصم: ${product.tax || '0%'}\n\n`;
+      });
+
+      shareText += '\nتم إنشاؤه بواسطة نظام إدارة المخزون - مجموعة القرعاوي التجارية';
 
       try {
-        await navigator.share({
-          title: 'نتائج البحث',
-          text: shareText
-        });
+        if (navigator.share) {
+          await navigator.share({
+            title: 'نتائج البحث',
+            text: shareText
+          });
+        } else {
+          // نسخ إلى الحافظة كبديل
+          await navigator.clipboard.writeText(shareText);
+          alert('تم نسخ النتائج إلى الحافظة');
+        }
       } catch (error) {
-        if (error.name !== 'AbortError') {
-          alert('فشلت عملية المشاركة: ' + error.message);
+        console.error('خطأ في مشاركة النتائج:', error);
+        try {
+          await navigator.clipboard.writeText(shareText);
+          alert('تعذرت المشاركة. تم نسخ النتائج إلى الحافظة');
+        } catch (clipboardError) {
+          console.error('خطأ في النسخ إلى الحافظة:', clipboardError);
+          alert('فشلت عملية المشاركة والنسخ. يرجى المحاولة مرة أخرى.');
         }
       }
     }
 
+    function displayResults(results) {
+      resultBody.innerHTML = '';
+      
+      if (!Array.isArray(results) || results.length === 0) {
+        resultTable.style.display = 'none';
+        const noResults = document.createElement('div');
+        noResults.className = 'alert alert-info';
+        noResults.style.marginTop = '20px';
+        noResults.style.textAlign = 'center';
+        noResults.textContent = 'لا توجد نتائج للبحث';
+        resultTable.parentNode.insertBefore(noResults, resultTable);
+        return;
+      }
+
+      resultTable.style.display = 'table';
+      const noResultsMsg = document.querySelector('.alert.alert-info');
+      if (noResultsMsg) noResultsMsg.remove();
+
+      results.forEach(product => {
+        const row = document.createElement('tr');
+        
+        // تنسيق التاريخ
+        let formattedDate = '-';
+        if (product.dateReceived) {
+          try {
+            const dateObj = new Date(product.dateReceived);
+            if (!isNaN(dateObj)) {
+              formattedDate = dateObj.toLocaleDateString('ar-SA', {
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric'
+              });
+            }
+          } catch (e) {
+            console.warn('خطأ في تنسيق التاريخ:', e);
+          }
+        }
+
+        // تنسيق الأسعار
+        const priceOptions = {
+          style: 'currency',
+          currency: 'SAR',
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2
+        };
+
+        const formattedPrice = parseFloat(product.price || 0).toLocaleString('ar-SA', priceOptions);
+        const formattedDiscountPrice = parseFloat(product.priceAfterDiscount || 0).toLocaleString('ar-SA', priceOptions);
+
+        // تنسيق الكمية
+        const formattedQuantity = parseFloat(product.quantity || 0).toLocaleString('ar-SA');
+
+        row.innerHTML = `
+          <td>${product.itemName || '-'}</td>
+          <td>${formattedPrice}</td>
+          <td>${formattedDate}</td>
+          <td>${product.color || '-'}</td>
+          <td>${formattedQuantity}</td>
+          <td>${formattedDiscountPrice}</td>
+          <td>${product.tax || '0%'}</td>
+        `;
+
+        // تمييز الصفوف التي تحتوي على خصم كبير
+        const discountPercentage = parseInt(product.tax);
+        if (discountPercentage >= 30) {
+          row.style.backgroundColor = '#ff9800';
+          row.style.color = 'white';
+        }
+
+        resultBody.appendChild(row);
+      });
+    }
+
     // طباعة النتائج
-    function printResults() {
-      if (!productsData.length) {
-        alert('لا توجد نتائج للطباعة');
+    async function printResults() {
+      if (!productsData || !Array.isArray(productsData) || productsData.length === 0) {
+        alert('لا توجد بيانات متاحة للطباعة');
         return;
       }
 
       const searchQuery = document.getElementById('searchInput').value.trim();
+      if (!searchQuery || searchQuery.length < 2) {
+        alert('الرجاء إدخال كلمة بحث صحيحة قبل الطباعة');
+        return;
+      }
+
+      // البحث عن النتائج باستخدام وظيفة البحث الحالية
+      const results = productsData.filter(product => {
+        if (!product) return false;
+        
+        try {
+          // تحضير حقول البحث
+          const searchFields = {
+            itemName: String(product.itemName || '').toLowerCase(),
+            color: String(product.color || '').toLowerCase(),
+            quantity: String(product.quantity || ''),
+            price: String(product.price || ''),
+            priceAfterDiscount: String(product.priceAfterDiscount || ''),
+            dateReceived: product.dateReceived ? new Date(product.dateReceived).toLocaleDateString('ar-SA') : ''
+          };
+
+          // البحث في جميع الحقول
+          return Object.values(searchFields).some(value => 
+            value.toLowerCase().includes(searchQuery.toLowerCase())
+          );
+        } catch (error) {
+          console.warn('خطأ في معالجة منتج أثناء البحث:', error);
+          return false;
+        }
+      });
+
+      if (!results.length) {
+        alert('لم يتم العثور على نتائج للطباعة');
+        return;
+      }
+
+      // إنشاء عنصر مؤقت لمعلومات الطباعة
+      const printInfo = document.createElement('div');
+      printInfo.id = 'print-info';
+      printInfo.style.cssText = `
+        margin-bottom: 20px;
+        padding: 20px;
+        background-color: #f8f9fa;
+        border: 2px solid #ddd;
+        border-radius: 8px;
+        text-align: center;
+        font-family: 'Cairo', sans-serif;
+      `;
+      
+      const currentDate = new Date().toLocaleDateString('ar-SA', {
+        weekday: 'long',
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+
+      printInfo.innerHTML = `
+        <div style="border-bottom: 2px solid #ddd; margin-bottom: 15px; padding-bottom: 15px;">
+          <h2 style="margin: 0 0 10px 0; color: #333; font-size: 24px;">تقرير نتائج البحث</h2>
+          <p style="margin: 5px 0; color: #666;">تاريخ الطباعة: ${currentDate}</p>
+          <p style="margin: 5px 0; color: #666;">كلمة البحث: ${searchQuery}</p>
+          <p style="margin: 5px 0; color: #666;">عدد النتائج: ${results.length}</p>
+        </div>
+        <div style="font-size: 14px; color: #666; margin-top: 15px;">
+          <p style="margin: 5px 0;">مجموعة القرعاوي التجارية</p>
+          <p style="margin: 5px 0;">نظام إدارة المخزون</p>
+        </div>
+      `;
+
+      // إخفاء العناصر غير المطلوبة للطباعة
+      const elementsToHide = document.querySelectorAll('.input-group, .action-buttons, #loadFromDrive, #resultBox, footer');
+      elementsToHide.forEach(el => el.style.display = 'none');
+
+      // تحسين مظهر الجدول للطباعة
+      resultTable.style.cssText = `
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 20px;
+        font-size: 12px;
+        direction: rtl;
+      `;
+
+      // تنسيق خلايا الجدول
+      const cells = resultTable.querySelectorAll('td, th');
+      cells.forEach(cell => {
+        cell.style.cssText = `
+          border: 1px solid #000;
+          padding: 8px;
+          text-align: center;
+        `;
+      });
+
+      // تنسيق رؤوس الأعمدة
+      const headers = resultTable.querySelectorAll('th');
+      headers.forEach(header => {
+        header.style.cssText += `
+          background-color: #f0f0f0;
+          font-weight: bold;
+          color: #000;
+        `;
+      });
+
+      // إضافة معلومات الطباعة
+      document.querySelector('.container').insertBefore(printInfo, resultTable);
+
+      // طباعة الصفحة
       window.print();
-    }
+
+      // إعادة العناصر المخفية وإزالة معلومات الطباعة
+       setTimeout(() => {
+         elementsToHide.forEach(el => el.style.display = '');
+         printInfo.remove();
+         resultTable.style.cssText = '';
+         cells.forEach(cell => cell.style.cssText = '');
+       }, 1000);
+     }
 
     // إضافة مستمعي أحداث لأزرار المشاركة والطباعة
     document.getElementById('shareButton').addEventListener('click', shareResults);
@@ -556,47 +1023,76 @@
       }
     });
 
-    // تحميل البيانات تلقائياً عند فتح الموقع
+    // تحميل البيانات المحفوظة عند فتح الموقع
     window.addEventListener('DOMContentLoaded', () => {
-      loadExcelFromGitHub();
+      loadSavedData();
     });
 
-    // وظيفة تحميل ملف Excel من GitHub
-    async function loadExcelFromGitHub() {
-      if (isDataLoaded) return;
-      
-      const excelUrl = 'https://github.com/adfsgtdfshg/barcode-Salah/raw/main/barcode_ready.xlsx';
-      const proxyUrl = 'https://cors-anywhere.herokuapp.com/';
-      
-      try {
-        // عرض رسالة تحميل
-        const loadingMessage = document.createElement('div');
-        loadingMessage.id = 'loading-message';
-        loadingMessage.style.padding = '15px';
-        loadingMessage.style.backgroundColor = '#009688';
-        loadingMessage.style.color = 'white';
-        loadingMessage.style.borderRadius = '4px';
-        loadingMessage.style.marginBottom = '20px';
-        loadingMessage.style.textAlign = 'center';
-        loadingMessage.innerHTML = 'جاري تحميل البيانات من GitHub...';
+    // إضافة مستمع حدث للتحقق من حالة الاتصال
+    window.addEventListener('online', () => {
+      document.getElementById('loadFromDrive').disabled = false;
+      document.getElementById('loadFromDrive').style.opacity = '1';
+    });
+
+    window.addEventListener('offline', () => {
+      document.getElementById('loadFromDrive').disabled = true;
+      document.getElementById('loadFromDrive').style.opacity = '0.5';
+    });
+
+    // التحقق من حالة الاتصال عند تحميل الصفحة
+    if (!navigator.onLine) {
+      document.getElementById('loadFromDrive').disabled = true;
+      document.getElementById('loadFromDrive').style.opacity = '0.5';
+    }
+
+    // تحسين وظيفة البحث
+    function search() {
+      const query = document.getElementById('searchInput').value.trim();
+      if (!query) {
+        document.getElementById('resultBox').style.display = 'none';
+        resultTable.style.display = 'none';
+        hideActionButtons();
+        return;
+      }
+
+      if (!productsData.length) {
+        alert('يرجى تحميل ملف Excel أولاً');
+        return;
+      }
+
+      const results = productsData.filter(product => {
+        if (!product) return false;
         
-        document.querySelector('.container').insertBefore(loadingMessage, document.querySelector('.input-group'));
+        const searchFields = [
+          String(product.itemName || ''),
+          String(product.color || ''),
+          String(product.quantity || ''),
+          String(product.price || ''),
+          String(product.dateReceived || '')
+        ].map(field => field.toLowerCase());
         
-        // محاولة تحميل البيانات المحفوظة أولاً
-        if (storageAvailable('sessionStorage')) {
-          const savedData = sessionStorage.getItem('excelData');
-          const fileName = sessionStorage.getItem('fileName');
-          if (savedData && fileName) {
-            productsData = JSON.parse(savedData);
-            updateFileInfo(fileName, productsData.length);
-            loadingMessage.innerHTML = `تم استرجاع ${productsData.length} منتج من التخزين المحلي`;
-            setTimeout(() => {
-              loadingMessage.style.display = 'none';
-            }, 3000);
-            isDataLoaded = true;
-            return;
-          }
-        }
+        return searchFields.some(field => field.includes(query.toLowerCase()));
+      });
+
+      displayResults(results);
+      showActionButtons();
+
+      const box = document.getElementById('resultBox');
+      if (results.length > 0) {
+        const firstResult = results[0];
+        box.innerHTML = `
+          ✅ الاسم: ${firstResult.itemName}<br>
+          اللون: ${firstResult.color}<br>
+          السعر: ${firstResult.price}<br>
+          السعر بعد الخصم: ${firstResult.priceAfterDiscount}<br>
+          الكمية: ${firstResult.quantity}
+        `;
+        box.style.display = 'block';
+      } else {
+        box.innerHTML = '❌ لم يتم العثور على نتائج';
+        box.style.display = 'block';
+      }
+    }
         
         // محاولة تحميل الملف من GitHub مع استخدام proxy إذا لزم الأمر
         let arrayBuffer;

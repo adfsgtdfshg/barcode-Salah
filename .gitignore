@@ -1,2 +1,8 @@
-.idea/
-*.log
+*.DS_Store
+*.swp
+.gradle
+.idea
+build
+local.properties
+infer-out
+*.iml
